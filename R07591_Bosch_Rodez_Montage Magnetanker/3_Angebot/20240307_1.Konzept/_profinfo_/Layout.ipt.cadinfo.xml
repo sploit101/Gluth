@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DocDataCache xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <FilePath>J:\Technischer_Vertrieb\20_Angebote\75xx\R07591_Bosch_Rodez_Montage Magnetanker\3_Angebot\Konzept\_profinfo_</FilePath>
+  <IntegrationVersion>0</IntegrationVersion>
+  <CadDocumentInfo>
+    <CadFileModiDate>2024-02-23T11:32:08.788Z</CadFileModiDate>
+    <PublishedInstanceNames />
+    <HasPublishedInstances>false</HasPublishedInstances>
+    <IsGenericOfFamily>false</IsGenericOfFamily>
+    <IsWeldment>false</IsWeldment>
+    <NativeType>Unknown</NativeType>
+    <CadType>OHNE_CAD</CadType>
+    <GeoType>GEO_TYPE_NOT_SET</GeoType>
+  </CadDocumentInfo>
+  <CommonMetaData>
+    <MetaDataItems>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>TITLE</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>SUBJECT</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>waas</CadPropertyValue>
+        <CadPropertyName>AUTHOR</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>KEYWORDS</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>COMMENTS</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>LAST SAVED BY</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>REVISION NUMBER</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>CATEGORY</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>MANAGER</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>COMPANY</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>15.02.2024 00:00:00</CadPropertyValue>
+        <CadPropertyName>CREATION TIME</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>Layout</CadPropertyValue>
+        <CadPropertyName>PART NUMBER</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>PROJECT</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>COST CENTER</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>CHECKED BY</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>DATE CHECKED</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>ENGR APPROVED BY</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>ENGR DATE APPROVED</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>USER STATUS</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>-</CadPropertyValue>
+        <CadPropertyName>MATERIAL</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>{7A9C766E-4230-4276-B755-56199BF9D5E7}</CadPropertyValue>
+        <CadPropertyName>PART PROPERTY REVISION ID</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>CATALOG WEB LINK</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>DESCRIPTION</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>VENDOR</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>{4D29B490-49B2-11D0-93C3-7E0706000000}</CadPropertyValue>
+        <CadPropertyName>DOCUMENT SUBTYPE</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>Modeling</CadPropertyValue>
+        <CadPropertyName>DOCUMENT SUBTYPE NAME</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>PROXY REFRESH DATE</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>MFG APPROVED BY</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>MFG DATE APPROVED</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>0,0000</CadPropertyValue>
+        <CadPropertyName>COST</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>STANDARD</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>1</CadPropertyValue>
+        <CadPropertyName>DESIGN STATUS</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>waas</CadPropertyValue>
+        <CadPropertyName>DESIGNER</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>ENGINEER</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>AUTHORITY</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>False</CadPropertyValue>
+        <CadPropertyName>PARAMETERIZED TEMPLATE</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>{4D29B490-49B2-11D0-93C3-7E0706000000}</CadPropertyValue>
+        <CadPropertyName>EXTERNAL PROPERTY REVISION ID</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>STANDARD REVISION</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>Standard</CadPropertyValue>
+        <CadPropertyName>MANUFACTURER</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>Custom</CadPropertyValue>
+        <CadPropertyName>STANDARDS ORGANIZATION</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>LANGUAGE</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>False</CadPropertyValue>
+        <CadPropertyName>DEFER UPDATES</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>SIZE DESIGNATION</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>STOCK NUMBER</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>WELD MATERIAL</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>0</CadPropertyValue>
+        <CadPropertyName>MASS</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>0</CadPropertyValue>
+        <CadPropertyName>SURFACEAREA</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>0</CadPropertyValue>
+        <CadPropertyName>VOLUME</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>0</CadPropertyValue>
+        <CadPropertyName>DENSITY</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>31</CadPropertyValue>
+        <CadPropertyName>VALID MASSPROPS</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>0</CadPropertyValue>
+        <CadPropertyName>FLAT PATTERN WIDTH</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>0</CadPropertyValue>
+        <CadPropertyName>FLAT PATTERN LENGTH</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>0</CadPropertyValue>
+        <CadPropertyName>FLAT PATTERN AREA</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>SHEET METAL RULE</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>2023.4 (Build 274418000, 418)</CadPropertyValue>
+        <CadPropertyName>LAST UPDATED WITH</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>SHEET METAL WIDTH</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>SHEET METAL LENGTH</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>SHEET METAL AREA</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>H:\Inventor-Umgebung\Inventor 2019\Materialbibliothek\GLUTH-Materialbibliothek.adsklib#1:-
+#f47029a0-43b4ee51-8e568397-1f8c4120</CadPropertyValue>
+        <CadPropertyName>MATERIAL IDENTIFIER</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>Standard</CadPropertyValue>
+        <CadPropertyName>APPEARANCE</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>False</CadPropertyValue>
+        <CadPropertyName>FLAT PATTERN DEFER UPDATE</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue />
+        <CadPropertyName>E/V</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>-</CadPropertyValue>
+        <CadPropertyName>DOCUMENT.MATERIAL</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>Standard</CadPropertyValue>
+        <CadPropertyName>DOCUMENT.RENDERSTYLE</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>Normal</CadPropertyValue>
+        <CadPropertyName>BOMSTRUCTURE</CadPropertyName>
+      </MetaDataCacheItem>
+      <MetaDataCacheItem>
+        <CadPropertyValue>{2EA3F683-4123-B083-60E1-9FA8A3FCB624}</CadPropertyValue>
+        <CadPropertyName>INTERNALNAME</CadPropertyName>
+      </MetaDataCacheItem>
+    </MetaDataItems>
+    <CadFileModiDate>2024-02-23T11:32:08.788Z</CadFileModiDate>
+  </CommonMetaData>
+  <Instances />
+  <DocStuct>
+    <CadFileModiDate>2024-02-23T11:32:08.788Z</CadFileModiDate>
+    <DocStructItems />
+  </DocStuct>
+</DocDataCache>
