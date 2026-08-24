@@ -49,8 +49,13 @@ opinion.
 
 Everything runs locally. Nothing leaves the machine, no API keys, no LLM.
 
-**Requirements:** macOS (the OCR step uses the built-in Vision framework),
-Python 3.11+, ~3 GB free disk for models, 8 GB RAM is enough.
+**Requirements:** Python 3.11+, ~3 GB free disk for models, 8 GB RAM is enough.
+Runs on **macOS, Windows and Linux** — `requirements.txt` selects the right OCR
+backend per platform (macOS Vision, or RapidOCR elsewhere).
+
+Legacy `.doc` files need a converter: macOS has `textutil` built in; on
+Windows/Linux install LibreOffice (`soffice`) or `antiword` and put it on PATH.
+Every other format works everywhere.
 
 ```bash
 # from the repository root
@@ -142,7 +147,9 @@ cd pipeline
 | UI shows "Local API not reachable" | server not running | run step 4 |
 | UI changes don't appear | browser cache | hard-reload; the server already sends `no-store` |
 | Model download stalls | unauthenticated Hugging Face rate limit | set `HF_TOKEN` and retry |
-| `ModuleNotFoundError: Vision` | not on macOS, or pyobjc missing | OCR is macOS-only; skip `ocr.py` |
+| `No OCR backend available` | OCR deps missing | `pip install -r requirements.txt` — it picks the backend for your platform |
+| `.doc needs a converter` | no textutil/soffice/antiword | install LibreOffice and ensure `soffice` is on PATH |
+| `No project folders found` | running outside the corpus | run from the repo root; projects are folders like `A07622000_…` |
 
 ## Regenerating from scratch
 

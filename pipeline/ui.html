@@ -459,11 +459,11 @@
                 </div>
 
                 <div class="flex items-center space-x-2 flex-none">
-                    <button onclick="openCorrectionModal()" class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 px-3 py-1.5 rounded font-medium text-xs transition flex items-center space-x-1 shadow-2xs">
+                    <button id="btn-correct" onclick="openCorrectionModal()" class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 px-3 py-1.5 rounded font-medium text-xs transition flex items-center space-x-1 shadow-2xs">
                         <i class="fa-solid fa-pen-to-square text-amber-600"></i>
                         <span>Correct...</span>
                     </button>
-                    <button onclick="approveDraft()" class="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded font-bold text-xs transition flex items-center space-x-1.5 shadow-2xs">
+                    <button id="btn-approve" onclick="approveDraft()" class="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded font-bold text-xs transition flex items-center space-x-1.5 shadow-2xs">
                         <i class="fa-solid fa-check"></i>
                         <span>Approve Draft</span>
                     </button>
@@ -539,9 +539,10 @@
                 <!-- Quick Sample Query Chips -->
                 <div class="flex items-center space-x-2 font-mono text-[10px]">
                     <span class="text-slate-400">Quick samples:</span>
-                    <button onclick="fillSearch('Schläuche ablängen, fetten und crimpen')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">Hose crimping</button>
-                    <button onclick="fillSearch('Bosch Ventilblock Entgraten und Spülen')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">Valve block deburring</button>
-                    <button onclick="fillSearch('Dichtheitsprüfung End-of-Line Tester')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">EOL Leak tester</button>
+                    <button onclick="fillSearch('Kabel ablängen abisolieren crimpen')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">Wire pre-assembly</button>
+                    <button onclick="fillSearch('Pinhole Erkennung Kamera Oberflächenprüfung')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">Pinhole detection</button>
+                    <button onclick="fillSearch('Magnetanker Montage Solenoid Armature')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">Solenoid assembly</button>
+                    <button onclick="fillSearch('Montagelinie GSBC 2K EPM Arbeitshöhe')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">Assembly line GSBC</button>
                 </div>
             </div>
 
@@ -809,17 +810,12 @@
             <div class="space-y-3 text-xs">
                 <div>
                     <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Project Number</label>
-                    <input type="text" id="new-proj-no" value="A07622004" class="w-full bg-slate-50 border rounded p-1.5 font-mono text-xs">
+                    <input type="text" id="new-proj-no" placeholder="e.g. A07623000" class="w-full bg-slate-50 border rounded p-1.5 font-mono text-xs">
                 </div>
 
                 <div>
                     <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Customer Name</label>
-                    <select id="new-proj-customer" class="w-full bg-slate-50 border rounded p-1.5 text-xs">
-                        <option value="BMW Group">BMW Group</option>
-                        <option value="Bosch GmbH">Bosch GmbH</option>
-                        <option value="Draexlmaier">Dräxlmaier</option>
-                            <option value="BMG">BMG / ArGe</option>
-                    </select>
+                    <select id="new-proj-customer" class="w-full bg-slate-50 border rounded p-1.5 text-xs"></select>
                 </div>
 
                 <div>
@@ -827,6 +823,8 @@
                     <input type="text" id="new-proj-title" placeholder="e.g. Laser Hose Marking Station" class="w-full bg-slate-50 border rounded p-1.5 text-xs">
                 </div>
             </div>
+
+            <div id="new-inquiry-error" class="hidden text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded p-2"></div>
 
             <div class="flex space-x-2 pt-2 border-t">
                 <button onclick="closeNewInquiryModal()" class="w-1/2 bg-slate-100 text-slate-700 py-1.5 rounded font-medium text-xs">
@@ -863,6 +861,11 @@
             const r = await fetch(API + path, opts);
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
+        }
+
+        function showLoading(el, msg) {
+            if (el) el.innerHTML =
+                `<div class="p-6 text-center text-slate-400 text-xs">${esc(msg || 'Loading…')}</div>`;
         }
 
         function apiDown(container, err) {
@@ -903,6 +906,9 @@
 
         /* --------------------------------------------------------------- QUEUE */
         async function loadInquiries() {
+            const tb0 = document.getElementById('queue-tbody');
+            if (tb0 && !tb0.children.length)
+                tb0.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-slate-400">Loading inquiries…</td></tr>';
             try {
                 const d = await api('/api/inquiries');
                 inquiries = d.inquiries;
@@ -997,6 +1003,17 @@
             pill.className = `text-[10px] font-bold px-2 py-0.5 rounded border ${low ? 'bg-amber-200 text-amber-900 border-amber-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'}`;
             document.getElementById('review-confidence-desc').textContent =
                 `${d.item_count} extracted items · ${d.citation_rate}% carry a source link · ${d.method}`;
+
+            // Nothing extracted → nothing to approve or correct.
+            const noContent = !d.item_count;
+            ['btn-approve', 'btn-correct'].forEach(id => {
+                const b = document.getElementById(id);
+                if (!b) return;
+                b.disabled = noContent;
+                b.classList.toggle('opacity-40', noContent);
+                b.classList.toggle('cursor-not-allowed', noContent);
+                b.title = noContent ? 'No extracted content to review yet' : '';
+            });
         }
 
         function switchDraftTab(kind) {
@@ -1059,6 +1076,10 @@
 
         async function approveDraft() {
             if (!currentDoc) return;
+            if (!currentDoc.item_count) {
+                triggerToast('Nothing to approve — no documents indexed for this project.');
+                return;
+            }
             try {
                 await api('/api/approve', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1071,6 +1092,10 @@
 
         /* ---------------------------------------------------- CORRECTION MODAL */
         function openCorrectionModal() {
+            if (currentDoc && !currentDoc.item_count) {
+                triggerToast('Nothing to correct — no documents indexed for this project.');
+                return;
+            }
             if (currentDoc) document.getElementById('corr-project').textContent = currentDoc.project_no;
             document.getElementById('modal-correct').classList.remove('hidden');
         }
@@ -1109,6 +1134,8 @@
         async function renderCorrectionLog() {
             const tag = document.getElementById('filter-route-tag').value;
             const tb = document.getElementById('corrections-tbody');
+            if (!tb.children.length)
+                tb.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-slate-400">Loading…</td></tr>';
             try {
                 const d = await api(`/api/corrections?route_tag=${encodeURIComponent(tag)}`);
                 tb.innerHTML = d.corrections.map(c => `
@@ -1134,6 +1161,8 @@
 
         /* ----------------------------------------------------------- DASHBOARD */
         async function renderDashboard() {
+            const mixEl0 = document.getElementById('confidence-mix');
+            if (mixEl0 && !mixEl0.dataset.loaded) showLoading(mixEl0, 'Computing metrics…');
             try {
                 const d = await api('/api/stats');
                 const c = d.corpus, q = d.quality, r = d.review;
@@ -1171,6 +1200,7 @@
                     </div>`).join('');
 
                 setText('review-throughput', `${r.approved} approved · ${r.corrections} corrections · ${r.drift} drift`);
+                mixEl.dataset.loaded = '1';
             } catch (e) { apiDown(document.getElementById('confidence-mix'), e); }
         }
 
@@ -1223,6 +1253,7 @@
         async function renderDrift() {
             const kind = document.getElementById('filter-drift-kind').value;
             const list = document.getElementById('drift-list');
+            if (!list.dataset.loaded) showLoading(list, 'Analysing references across the corpus…');
             try {
                 const all = await api('/api/drift');
                 const k = all.by_kind || {};
@@ -1250,6 +1281,7 @@
                         ${files}
                     </div>`;
                 }).join('') || '<div class="p-4 text-center text-slate-400 text-xs">No findings.</div>';
+                list.dataset.loaded = '1';
             } catch (e) { apiDown(list, e); }
             loadSpecDiffPairs();
         }
@@ -1258,6 +1290,7 @@
         async function loadSpecDiffPairs() {
             const sel = document.getElementById('specdiff-pair');
             if (sel.dataset.filled) return;
+            showLoading(document.getElementById('specdiff-result'), 'Loading document pairs…');
             try {
                 const d = await api('/api/specdiff/pairs');
                 specPairs = d.pairs || [];
@@ -1292,6 +1325,58 @@
                     </div>
                     ${changed || '<div class="text-slate-400 text-xs p-2">No numeric changes.</div>'}`;
             } catch (e) { apiDown(box, e); }
+        }
+
+
+        /* -------------------------------------------------------- NEW INQUIRY */
+        async function openNewInquiryModal() {
+            const sel = document.getElementById('new-proj-customer');
+            if (!sel.dataset.filled) {
+                try {
+                    const d = await api('/api/customers');
+                    sel.innerHTML = d.customers.map(c =>
+                        `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+                    sel.dataset.filled = '1';
+                } catch (e) { /* leave empty; submit will report the error */ }
+            }
+            document.getElementById('new-inquiry-error').classList.add('hidden');
+            document.getElementById('modal-new-inquiry').classList.remove('hidden');
+            document.getElementById('new-proj-no').focus();
+        }
+
+        function closeNewInquiryModal() {
+            document.getElementById('modal-new-inquiry').classList.add('hidden');
+        }
+
+        async function submitNewInquiry() {
+            const errEl = document.getElementById('new-inquiry-error');
+            const showErr = m => { errEl.textContent = m; errEl.classList.remove('hidden'); };
+
+            const project_no   = document.getElementById('new-proj-no').value.trim();
+            const project_name = document.getElementById('new-proj-title').value.trim();
+            const customer     = document.getElementById('new-proj-customer').value;
+
+            if (!/^[AR]\d{5,8}$/.test(project_no)) {
+                showErr('Project number must look like A07623000 or R07591.');
+                return;
+            }
+            if (!project_name) { showErr('Machine / scope title is required.'); return; }
+
+            try {
+                const r = await fetch(`${API}/api/inquiry`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_no, project_name, customer })
+                });
+                const d = await r.json();
+                if (!r.ok) { showErr(d.error || ('HTTP ' + r.status)); return; }
+
+                closeNewInquiryModal();
+                document.getElementById('new-proj-no').value = '';
+                document.getElementById('new-proj-title').value = '';
+                triggerToast(`${d.project_no} created · routed to ${d.assigned_to}`);
+                await loadInquiries();
+                switchScreen('screen-queue');
+            } catch (e) { showErr('Local API not reachable — is the server running?'); }
         }
 
         /* ---------------------------------------------------- PRECEDENT SEARCH */

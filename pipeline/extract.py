@@ -48,6 +48,17 @@ PHASE_RE = re.compile(r"^(\d)_(.+)$")
 PROJECT_RE = re.compile(r"^([AR]\d{5,8})[_\s]*(.*)$")
 
 
+def project_dirs(root: Path) -> list[Path]:
+    """
+    Top-level folders that are actual Gluth projects (A…/R… numbering).
+
+    The corpus root also holds our own code, docs and stray uploads. Only
+    project folders are content — everything else must never enter the index.
+    """
+    return sorted(p for p in root.iterdir()
+                  if p.is_dir() and PROJECT_RE.match(p.name))
+
+
 def derive_meta(path: Path) -> dict:
     """Folder taxonomy is free, high-quality metadata. Use it."""
     rel = path.relative_to(ROOT)
@@ -160,15 +171,47 @@ def extract_msg(path: Path):
 
 
 def extract_doc(path: Path):
-    """Legacy Word .doc via macOS textutil (built in, no install)."""
+    """
+    Legacy Word .doc. Cross-platform, in order of preference:
+
+      1. macOS `textutil`            — built in, no install
+      2. LibreOffice `soffice`       — Windows/Linux/macOS, if installed
+      3. `antiword`                  — small Linux/Windows utility
+
+    Raises with an actionable message if none is available.
+    """
+    import shutil
     import subprocess
-    r = subprocess.run(
-        ["textutil", "-convert", "txt", "-stdout", str(path)],
-        capture_output=True, timeout=60)
-    if r.returncode != 0:
-        raise RuntimeError((r.stderr or b"").decode("utf-8", "replace")[:160]
-                           or "textutil failed")
-    return [("", r.stdout.decode("utf-8", "replace"))]
+    import tempfile
+
+    if shutil.which("textutil"):                       # macOS
+        r = subprocess.run(["textutil", "-convert", "txt", "-stdout", str(path)],
+                           capture_output=True, timeout=120)
+        if r.returncode == 0:
+            return [("", r.stdout.decode("utf-8", "replace"))]
+
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if soffice:                                        # Windows / Linux / macOS
+        with tempfile.TemporaryDirectory() as tmp:
+            r = subprocess.run(
+                [soffice, "--headless", "--convert-to", "txt:Text",
+                 "--outdir", tmp, str(path)],
+                capture_output=True, timeout=180)
+            produced = list(Path(tmp).glob("*.txt"))
+            if r.returncode == 0 and produced:
+                return [("", produced[0].read_text(encoding="utf-8",
+                                                   errors="replace"))]
+
+    if shutil.which("antiword"):                       # Linux / Windows
+        r = subprocess.run(["antiword", str(path)], capture_output=True,
+                           timeout=120)
+        if r.returncode == 0:
+            return [("", r.stdout.decode("utf-8", "replace"))]
+
+    raise RuntimeError(
+        ".doc needs a converter: macOS has textutil built in; "
+        "on Windows/Linux install LibreOffice (provides 'soffice') "
+        "or antiword, and ensure it is on PATH")
 
 
 def extract_xml(path: Path):
@@ -314,10 +357,20 @@ def main():
         print(f"Found OCR sidecars for {len(ocr_text)} files\n", flush=True)
     t0 = time.time()
 
-    files = [p for p in ROOT.rglob("*") if p.is_file() and ".git" not in p.parts]
-    files = [p for p in files if "pipeline" not in p.relative_to(ROOT).parts]
-    files.sort()
-    print(f"Scanning {len(files)} files under {ROOT}\n", flush=True)
+    roots = project_dirs(ROOT)
+    if not roots:
+        raise SystemExit(
+            f"No project folders found under {ROOT}.\n"
+            "Expected top-level directories named like 'A07622000_GSBC-2K' "
+            "or 'R07591_Bosch_...'.")
+
+    files = sorted(p for d in roots for p in d.rglob("*")
+                   if p.is_file() and ".git" not in p.parts)
+    print(f"Scanning {len(files)} files in {len(roots)} project folder(s):",
+          flush=True)
+    for d in roots:
+        print(f"  · {d.name}", flush=True)
+    print(flush=True)
 
     for path in files:
         suffix = path.suffix.lower()

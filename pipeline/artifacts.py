@@ -253,6 +253,29 @@ def build(project_no: str, artifact: str = "summary") -> dict:
     fn = BUILDERS.get(artifact.lower())
     if not fn:
         raise ValueError(f"unknown artifact: {artifact}")
+
+    # A newly registered inquiry has no documents until they are filed and the
+    # corpus is re-extracted. Say so plainly rather than rendering an empty shell.
+    if not project_chunks(project_no):
+        return {
+            "artifact": artifact.capitalize(),
+            "project_no": project_no,
+            "method": "no documents indexed for this project yet",
+            "sections": [{
+                "title": "Keine Dokumente vorhanden",
+                "items": [{
+                    "text": ("Für dieses Projekt sind noch keine Dokumente "
+                             "indexiert. Unterlagen in den Projektordner legen, "
+                             "dann extract.py und index.py erneut ausführen."),
+                    "filename": "", "source_path": "", "page": "",
+                    "phase": "", "derived": True,
+                }],
+                "flag": True,
+            }],
+            "citation_rate": 0, "item_count": 0,
+            "confidence": "None", "llm_used": False, "empty": True,
+        }
+
     doc = fn(project_no)
     cited = sum(1 for s in doc["sections"] for i in s["items"]
                 if i.get("source_path"))

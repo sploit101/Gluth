@@ -155,6 +155,29 @@ def api_inquiry(project_no: str):
     return rows[0]
 
 
+@app.post("/api/inquiry")
+def api_create_inquiry(payload: dict = Body(...)):
+    try:
+        res = store_mod.create_inquiry(
+            DB,
+            project_no=payload.get("project_no", ""),
+            project_name=payload.get("project_name", ""),
+            customer=payload.get("customer", ""),
+            stage=payload.get("stage", "2_Anfrage"),
+            assigned_to=payload.get("assigned_to", ""),
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"ok": True, **res}
+
+
+@app.get("/api/customers")
+def api_customers():
+    """Customers present in the corpus, for the New Inquiry form."""
+    seen = {c["customer"] for c in search_mod.load_chunks() if c.get("customer")}
+    return {"customers": sorted(seen)}
+
+
 @app.post("/api/decision")
 def api_decision(payload: dict = Body(...)):
     store_mod.set_decision(
@@ -268,9 +291,26 @@ def api_stats():
 
 
 # -------------------------------------------------------------------- drift
+# Drift analysis walks every chunk (~4 s). The corpus only changes when
+# extract.py re-runs, so cache on the chunk file's mtime.
+_DRIFT_CACHE: dict = {}
+
+
+def _drift_findings(project: str | None):
+    try:
+        stamp = (OUT / "chunks.jsonl").stat().st_mtime
+    except OSError:
+        stamp = 0
+    key = (stamp, project)
+    if key not in _DRIFT_CACHE:
+        _DRIFT_CACHE.clear()          # only ever keep the current corpus
+        _DRIFT_CACHE[key] = drift_mod.analyse(search_mod.load_chunks(), project)
+    return _DRIFT_CACHE[key]
+
+
 @app.get("/api/drift")
 def api_drift(project: str | None = None, kind: str | None = None):
-    findings = drift_mod.analyse(search_mod.load_chunks(), project)
+    findings = _drift_findings(project)
     if kind:
         findings = [f for f in findings if f["kind"] == kind]
     return {

@@ -1,14 +1,18 @@
-# Extraction
+# Extraction — all platforms
 pymupdf>=1.28
 python-docx>=1.2
 python-pptx>=1.0
 openpyxl>=3.1
 extract-msg>=0.56
 py7zr>=1.1
+pillow>=10.0
 
-# OCR (macOS Vision — on-device, no model download)
-pyobjc-framework-Vision>=12.0
-pyobjc-framework-Quartz>=12.0
+# OCR backend — macOS: Vision framework (built in, nothing to download)
+pyobjc-framework-Vision>=12.0 ; sys_platform == "darwin"
+pyobjc-framework-Quartz>=12.0 ; sys_platform == "darwin"
+
+# OCR backend — Windows / Linux: RapidOCR (ONNX, no system binary needed)
+rapidocr-onnxruntime>=1.3 ; sys_platform != "darwin"
 
 # Retrieval
 bm25s>=0.3
@@ -18,3 +22,7 @@ fastembed>=0.8
 # API
 fastapi>=0.141
 uvicorn[standard]>=0.52
+
+# NOTE for Windows/Linux: legacy .doc files need an external converter.
+# Install LibreOffice (provides `soffice`) or `antiword` and put it on PATH.
+# macOS uses the built-in `textutil` and needs nothing extra.

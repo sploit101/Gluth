@@ -22,13 +22,44 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import platform
 import sys
 import time
 from pathlib import Path
 
-import Quartz
-import Vision
-from Foundation import NSURL
+# --------------------------------------------------------------- backends
+# macOS  → Vision framework (built in, no download, excellent German)
+# other  → RapidOCR (ONNX, pip-installable, no system binary)
+IS_MAC = platform.system() == "Darwin"
+
+Quartz = Vision = NSURL = None
+_rapid = None
+
+if IS_MAC:
+    try:
+        import Quartz
+        import Vision
+        from Foundation import NSURL
+    except ImportError:
+        IS_MAC = False
+
+
+def _rapid_engine():
+    """Lazily construct the cross-platform OCR engine."""
+    global _rapid
+    if _rapid is None:
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+        except ImportError as e:
+            raise SystemExit(
+                "No OCR backend available.\n"
+                "  macOS  : pip install pyobjc-framework-Vision "
+                "pyobjc-framework-Quartz\n"
+                "  Windows/Linux: pip install rapidocr-onnxruntime pillow "
+                "pymupdf"
+            ) from e
+        _rapid = RapidOCR()
+    return _rapid
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(__file__).resolve().parent / "out"
@@ -44,15 +75,21 @@ def sidecar_path(rel_path: str) -> Path:
     return OCR_DIR / f"{h}.json"
 
 
-def _recognize(cg_image) -> str:
-    """Run Vision text recognition on one CGImage."""
+# Vision (and most engines) return nothing at all on very large images.
+# Engineering drawings here reach 500+ megapixels, so anything big is tiled.
+MAX_PIXELS = 30_000_000
+TILE_OVERLAP = 0.06          # keep text that straddles a tile edge
+
+
+# ------------------------------------------------------------ macOS backend
+def _vision_recognize(cg_image) -> str:
     handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(
         cg_image, None)
     req = Vision.VNRecognizeTextRequest.alloc().init()
     req.setRecognitionLevel_(0)              # 0 = accurate
     req.setRecognitionLanguages_(LANGS)
     req.setUsesLanguageCorrection_(True)
-    ok, err = handler.performRequests_error_([req], None)
+    ok, _err = handler.performRequests_error_([req], None)
     if not ok:
         return ""
     lines = []
@@ -63,21 +100,51 @@ def _recognize(cg_image) -> str:
     return "\n".join(lines)
 
 
-def ocr_pdf(path: Path) -> list[dict]:
+def _vision_tiled(img) -> str:
+    """OCR a CGImage, splitting into overlapping tiles when it is huge."""
+    import math
+    w = Quartz.CGImageGetWidth(img)
+    h = Quartz.CGImageGetHeight(img)
+    if w * h <= MAX_PIXELS:
+        return _vision_recognize(img)
+
+    parts = max(2, min(math.ceil(math.sqrt((w * h) / MAX_PIXELS)), 8))
+    tw, th = w // parts, h // parts
+    ox, oy = int(tw * TILE_OVERLAP), int(th * TILE_OVERLAP)
+
+    seen, chunks = set(), []
+    for r in range(parts):
+        for c in range(parts):
+            x, y = max(0, c * tw - ox), max(0, r * th - oy)
+            cw, ch = min(tw + 2 * ox, w - x), min(th + 2 * oy, h - y)
+            if cw <= 0 or ch <= 0:
+                continue
+            tile = Quartz.CGImageCreateWithImageInRect(
+                img, Quartz.CGRectMake(x, y, cw, ch))
+            if not tile:
+                continue
+            for line in _vision_recognize(tile).splitlines():
+                s = line.strip()
+                if s and s not in seen:
+                    seen.add(s)
+                    chunks.append(s)
+    return "\n".join(chunks)
+
+
+def _vision_pdf(path: Path) -> list[dict]:
     url = NSURL.fileURLWithPath_(str(path))
     doc = Quartz.CGPDFDocumentCreateWithURL(url)
     if not doc:
         return []
-    n = Quartz.CGPDFDocumentGetNumberOfPages(doc)
     pages = []
-    for i in range(1, n + 1):
+    for i in range(1, Quartz.CGPDFDocumentGetNumberOfPages(doc) + 1):
         page = Quartz.CGPDFDocumentGetPage(doc, i)
         if not page:
             continue
         rect = Quartz.CGPDFPageGetBoxRect(page, Quartz.kCGPDFMediaBox)
         w = int(rect.size.width * DPI_SCALE)
         h = int(rect.size.height * DPI_SCALE)
-        if w <= 0 or h <= 0 or w * h > 40_000_000:      # skip absurd pages
+        if w <= 0 or h <= 0 or w * h > 40_000_000:
             continue
         cs = Quartz.CGColorSpaceCreateDeviceRGB()
         ctx = Quartz.CGBitmapContextCreate(
@@ -86,70 +153,106 @@ def ocr_pdf(path: Path) -> list[dict]:
         Quartz.CGContextFillRect(ctx, Quartz.CGRectMake(0, 0, w, h))
         Quartz.CGContextScaleCTM(ctx, DPI_SCALE, DPI_SCALE)
         Quartz.CGContextDrawPDFPage(ctx, page)
-        img = Quartz.CGBitmapContextCreateImage(ctx)
-        text = _recognize(img)
+        text = _vision_tiled(Quartz.CGBitmapContextCreateImage(ctx))
         if text.strip():
             pages.append({"page": str(i), "text": text})
     return pages
 
 
-# Vision silently returns nothing on very large images. Large engineering
-# drawings (some here are 500+ megapixels) must be tiled.
-MAX_PIXELS = 30_000_000
-TILE_OVERLAP = 0.06          # keep text that straddles a tile edge
+def _vision_image(path: Path) -> list[dict]:
+    src = Quartz.CGImageSourceCreateWithURL(
+        NSURL.fileURLWithPath_(str(path)), None)
+    if not src or Quartz.CGImageSourceGetCount(src) == 0:
+        return []
+    count = Quartz.CGImageSourceGetCount(src)
+    out = []
+    for i in range(count):                              # multi-page TIFF
+        img = Quartz.CGImageSourceCreateImageAtIndex(src, i, None)
+        if not img:
+            continue
+        text = _vision_tiled(img)
+        if text.strip():
+            out.append({"page": str(i + 1) if count > 1 else "", "text": text})
+    return out
 
 
-def _recognize_tiled(img) -> str:
-    """OCR a CGImage, splitting it into overlapping tiles when it is huge."""
-    w = Quartz.CGImageGetWidth(img)
-    h = Quartz.CGImageGetHeight(img)
-    if w * h <= MAX_PIXELS:
-        return _recognize(img)
-
-    # square-ish grid that brings each tile under the pixel budget
+# ------------------------------------- cross-platform backend (Windows/Linux)
+def _pil_tiled(pil_img) -> str:
+    """Same tiling idea, on a PIL image, through RapidOCR."""
     import math
-    parts = math.ceil(math.sqrt((w * h) / MAX_PIXELS))
-    parts = max(2, min(parts, 8))
+
+    import numpy as np
+    engine = _rapid_engine()
+
+    def run(im) -> list[str]:
+        res, _ = engine(np.array(im))
+        return [line[1] for line in (res or []) if len(line) > 1]
+
+    w, h = pil_img.size
+    if w * h <= MAX_PIXELS:
+        return "\n".join(run(pil_img))
+
+    parts = max(2, min(math.ceil(math.sqrt((w * h) / MAX_PIXELS)), 8))
     tw, th = w // parts, h // parts
     ox, oy = int(tw * TILE_OVERLAP), int(th * TILE_OVERLAP)
 
     seen, chunks = set(), []
     for r in range(parts):
         for c in range(parts):
-            x = max(0, c * tw - ox)
-            y = max(0, r * th - oy)
-            cw = min(tw + 2 * ox, w - x)
-            ch = min(th + 2 * oy, h - y)
-            if cw <= 0 or ch <= 0:
-                continue
-            tile = Quartz.CGImageCreateWithImageInRect(
-                img, Quartz.CGRectMake(x, y, cw, ch))
-            if not tile:
-                continue
-            for line in _recognize(tile).splitlines():
-                s = line.strip()
-                # overlap means the same line can appear in two tiles
+            x, y = max(0, c * tw - ox), max(0, r * th - oy)
+            box = (x, y, min(x + tw + 2 * ox, w), min(y + th + 2 * oy, h))
+            for s in run(pil_img.crop(box)):
+                s = s.strip()
                 if s and s not in seen:
                     seen.add(s)
                     chunks.append(s)
     return "\n".join(chunks)
 
 
-def ocr_image(path: Path) -> list[dict]:
-    url = NSURL.fileURLWithPath_(str(path))
-    src = Quartz.CGImageSourceCreateWithURL(url, None)
-    if not src or Quartz.CGImageSourceGetCount(src) == 0:
-        return []
+def _rapid_pdf(path: Path) -> list[dict]:
+    """Render each page with PyMuPDF, then OCR the bitmap."""
+    import io
+
+    import pymupdf
+    from PIL import Image
+
+    pages = []
+    with pymupdf.open(path) as doc:
+        for i, page in enumerate(doc, 1):
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(DPI_SCALE, DPI_SCALE))
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            text = _pil_tiled(img)
+            if text.strip():
+                pages.append({"page": str(i), "text": text})
+    return pages
+
+
+def _rapid_image(path: Path) -> list[dict]:
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None          # these drawings are legitimately huge
     out = []
-    count = Quartz.CGImageSourceGetCount(src)
-    for i in range(count):                              # multi-page TIFF
-        img = Quartz.CGImageSourceCreateImageAtIndex(src, i, None)
-        if not img:
-            continue
-        text = _recognize_tiled(img)
-        if text.strip():
-            out.append({"page": str(i + 1) if count > 1 else "", "text": text})
+    with Image.open(path) as im:
+        frames = getattr(im, "n_frames", 1)
+        for i in range(frames):            # multi-page TIFF
+            im.seek(i)
+            text = _pil_tiled(im.convert("RGB"))
+            if text.strip():
+                out.append({"page": str(i + 1) if frames > 1 else "",
+                            "text": text})
     return out
+
+
+# ------------------------------------------------------------------ dispatch
+def ocr_pdf(path: Path) -> list[dict]:
+    return _vision_pdf(path) if IS_MAC else _rapid_pdf(path)
+
+
+def ocr_image(path: Path) -> list[dict]:
+    return _vision_image(path) if IS_MAC else _rapid_image(path)
+
+
+def backend_name() -> str:
+    return "macOS Vision" if IS_MAC else "RapidOCR (ONNX)"
 
 
 def targets() -> list[dict]:
@@ -213,7 +316,7 @@ def main() -> int:
               flush=True)
 
     print(f"\n  OCR complete — {done} processed, {skipped} already done, "
-          f"{failed} failed")
+          f"{failed} failed   [backend: {backend_name()}]")
     print(f"  {total_chars:,} characters recovered in {time.time()-t0:.1f}s")
     print(f"  Sidecars in {OCR_DIR}")
     print("  Re-run extract.py, then index.py, to fold them into the index.\n")

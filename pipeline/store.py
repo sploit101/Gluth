@@ -154,6 +154,31 @@ def list_inquiries(conn) -> list[dict]:
     return out
 
 
+def create_inquiry(conn, project_no: str, project_name: str, customer: str,
+                   stage: str = "2_Anfrage", assigned_to: str = "") -> dict:
+    """
+    Register an inquiry that has no folder in the corpus yet — a new RFQ that
+    just arrived. It joins the same queue as the seeded ones; it simply has no
+    documents behind it until they are filed and the corpus is re-extracted.
+    """
+    project_no = (project_no or "").strip()
+    if not project_no:
+        raise ValueError("project number is required")
+    if conn.execute("SELECT 1 FROM inquiry WHERE project_no=?",
+                    (project_no,)).fetchone():
+        raise ValueError(f"{project_no} already exists")
+
+    assigned = assigned_to or ROUTING.get(customer, "Admin triage")
+    conn.execute(
+        "INSERT INTO inquiry (project_no, project_name, customer, stage,"
+        " status, confidence, assigned_to, doc_count, chunk_count, updated_at)"
+        " VALUES (?,?,?,?,?,?,?,0,0,?)",
+        (project_no, (project_name or "").strip(), customer, stage,
+         "New", "", assigned, now()))
+    conn.commit()
+    return {"project_no": project_no, "assigned_to": assigned}
+
+
 def add_correction(conn, **kw) -> int:
     cur = conn.execute(
         "INSERT INTO correction (project_no, artifact, field, action,"

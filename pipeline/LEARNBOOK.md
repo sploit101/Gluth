@@ -160,7 +160,12 @@ A07622000_GSBC-2K/
   8_Nachträge/      addenda
 ```
 
-`derive_meta()` parses this. That gives every chunk a project number, a customer,
+`project_dirs()` restricts the walk to top-level folders matching `A…`/`R…`
+numbering, so our own code, docs and stray uploads can never enter the index —
+a `.venv` inside the repo contains stray `.jpg` assets that would otherwise be
+indexed as project drawings.
+
+`derive_meta()` then parses the path. That gives every chunk a project number, a customer,
 and a workflow phase **without any classifier**. A chunk from `3_Angebot` *is* a
 labelled offer — no model needs to guess that. This is the single highest
 value-per-line function in the codebase.
@@ -232,9 +237,16 @@ answers it. Current answer: **236/236 = 100%**.
 
 **Job:** recover text from scans, TIFFs and JPGs.
 
-It uses the **macOS Vision framework** — on-device, no model download, no
-network, and German (`de-DE`) supported natively. On Apple silicon it is fast and
-notably better on engineering drawings than a stock Tesseract install.
+Two backends, chosen by platform at import time:
+
+- **macOS** → the **Vision framework**. On-device, nothing to download, German
+  (`de-DE`) native, and notably better on engineering drawings than a stock
+  Tesseract install.
+- **Windows / Linux** → **RapidOCR** (ONNX). Pip-installable, no system binary.
+
+`ocr_pdf()` / `ocr_image()` dispatch on `IS_MAC`; everything downstream is
+identical. Both backends tile large images (below), and both were verified on
+this corpus.
 
 ### The sidecar pattern
 
