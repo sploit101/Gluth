@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLUTH AI // RFQ Engineering Intelligence Workspace</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        // Gluth brand palette (pulled from the A07591000B concept deck theme)
+                        brand: {
+                            mint: '#4DB8A0',   // primary accent / active
+                            teal: '#008F7B',   // hover / secondary
+                            deep: '#0E161A',   // text on mint
+                            soft: '#E3F2EE',   // mint tint surface
+                        },
+                        slate: {
+                            50: '#f6f8f8',
+                            100: '#eef2f1',
+                            200: '#e0e6e5',
+                            300: '#c6d0cf',
+                            400: '#8a9a9d',
+                            500: '#5f7075',
+                            600: '#4a5b61',
+                            700: '#37474e',
+                            800: '#2c3e48',   // Gluth primary dark
+                            900: '#25353d',
+                            950: '#1b282e',   // Gluth ink (headers, dark surfaces)
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F8FAFC;
+            color: #0F172A;
+            -webkit-font-smoothing: antialiased;
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #F1F5F9; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+        
+        .citation-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 0px 4px;
+            font-size: 10px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            border-radius: 3px;
+            background-color: #E3F2EE;
+            color: #008F7B;
+            border: 1px solid #A9DED2;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            margin-left: 3px;
+            margin-right: 2px;
+        }
+        .citation-chip:hover {
+            background-color: #008F7B;
+            color: #FFFFFF;
+            border-color: #008F7B;
+        }
+        .source-highlight {
+            background-color: #FFF3C4;
+            border-left: 3px solid #4DB8A0;
+            padding: 4px 8px;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+        /* focus rings + selection in brand */
+        body { selection-color: initial; }
+        ::selection { background: #4DB8A0; color: #0E161A; }
+        input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 2px #4DB8A0; border-color: #4DB8A0 !important; }
+        .brand-logo { background: var(--primary); }
+
+        /* ============================================================= */
+        /* shadcn/ui DESIGN SYSTEM  (OKLCH tokens · Gluth teal primary)    */
+        /* ref: ui.shadcn.com/docs/theming                                */
+        /* ============================================================= */
+        :root {
+            --radius: 0.625rem;
+            --background: oklch(0.995 0.002 175);
+            --foreground: oklch(0.23 0.02 200);
+            --card: oklch(1 0 0);
+            --card-foreground: oklch(0.23 0.02 200);
+            --popover: oklch(1 0 0);
+            --popover-foreground: oklch(0.23 0.02 200);
+            --primary: oklch(0.58 0.09 178);
+            --primary-foreground: oklch(0.99 0.01 175);
+            --secondary: oklch(0.968 0.006 180);
+            --secondary-foreground: oklch(0.28 0.03 200);
+            --muted: oklch(0.968 0.006 180);
+            --muted-foreground: oklch(0.53 0.02 200);
+            --accent: oklch(0.96 0.02 178);
+            --accent-foreground: oklch(0.30 0.04 195);
+            --success: oklch(0.62 0.11 175);
+            --warning: oklch(0.72 0.14 85);
+            --destructive: oklch(0.60 0.20 28);
+            --border: oklch(0.92 0.006 195);
+            --input: oklch(0.92 0.006 195);
+            --ring: oklch(0.58 0.09 178);
+            --sidebar: oklch(0.30 0.03 205);
+            --sidebar-foreground: oklch(0.85 0.02 200);
+            --sidebar-muted: oklch(0.62 0.02 205);
+            --sidebar-border: oklch(1 0 0 / 10%);
+        }
+
+        /* ---- base ---- */
+        body {
+            background: var(--background) !important;
+            color: var(--foreground);
+            font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        main { background: transparent !important; padding: 22px 26px !important; }
+        ::selection { background: var(--primary); color: var(--primary-foreground); }
+
+        /* Kill the terminal look: mono → sans except explicit data */
+        .font-mono { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif !important; letter-spacing: 0 !important; }
+        .mono, #source-viewer-body, #source-viewer-body *, .tabular { font-family: 'JetBrains Mono', monospace !important; }
+
+        h1,h2,h3,h4 { color: var(--foreground); letter-spacing: -.01em; font-weight: 600; }
+
+        /* ---- token remap of the utility soup ---- */
+        .bg-white { background: var(--card) !important; }
+        .bg-slate-50, .bg-slate-100 { background: var(--muted) !important; }
+        .border-slate-200, .border-slate-100, .border-slate-300 { border-color: var(--border) !important; }
+        .text-slate-950, .text-slate-900 { color: var(--foreground) !important; }
+        .text-slate-700, .text-slate-800 { color: color-mix(in oklab, var(--foreground) 82%, transparent) !important; }
+        .text-slate-600, .text-slate-500, .text-slate-400, .text-slate-300 { color: var(--muted-foreground) !important; }
+
+        /* ---- radius scale ---- */
+        .rounded-lg { border-radius: var(--radius) !important; }
+        .rounded, .rounded-md { border-radius: calc(var(--radius) - 2px) !important; }
+        .rounded-full { border-radius: 9999px !important; }
+
+        /* ---- shadcn elevation: barely-there ---- */
+        .shadow-2xs, .shadow-xs { box-shadow: 0 1px 2px 0 rgb(16 24 28 / .05) !important; }
+        .shadow-sm { box-shadow: 0 1px 3px 0 rgb(16 24 28 / .07), 0 1px 2px -1px rgb(16 24 28 / .07) !important; }
+        .shadow-xl { box-shadow: 0 10px 30px -12px rgb(16 24 28 / .28) !important; }
+
+        /* ---- cards ---- */
+        .bg-white.rounded-lg, .bg-white.border { border: 1px solid var(--border) !important; }
+
+        /* ---- buttons (shadcn: rounded-md, medium, ring) ---- */
+        button { transition: background-color .15s ease, color .15s ease, box-shadow .15s ease; }
+        .bg-slate-950 { background: var(--primary) !important; color: var(--primary-foreground) !important; box-shadow: 0 1px 2px 0 rgb(16 24 28 / .08); }
+        .bg-slate-950:hover { background: color-mix(in oklab, var(--primary) 90%, black) !important; }
+        .bg-emerald-700, .bg-emerald-800 { background: var(--success) !important; color: var(--primary-foreground) !important; }
+        .bg-emerald-700:hover { background: color-mix(in oklab, var(--success) 90%, black) !important; }
+        .bg-rose-700, .bg-rose-800 { background: var(--destructive) !important; color: #fff !important; }
+        .bg-slate-100 { background: var(--secondary) !important; }
+        .bg-slate-100:hover { background: color-mix(in oklab, var(--secondary) 92%, black) !important; }
+
+        /* ---- focus-visible ring ---- */
+        input:focus-visible, select:focus-visible, textarea:focus-visible,
+        input:focus, select:focus, textarea:focus {
+            outline: none !important;
+            border-color: var(--ring) !important;
+            box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 45%, transparent) !important;
+        }
+        input, select, textarea { background: transparent !important; }
+
+        /* ---- table ---- */
+        thead tr { background: transparent !important; }
+        th { color: var(--muted-foreground) !important; font-weight: 500 !important; text-transform: none !important; letter-spacing: 0 !important; font-family: 'Inter', sans-serif !important; font-size: 11px; }
+        td, th { padding: 12px 16px !important; }
+        tbody tr { border-bottom: 1px solid var(--border); }
+        tbody tr:hover { background: var(--muted) !important; }
+
+        /* ---- badges / pills ---- */
+        .bg-emerald-100 { background: color-mix(in oklab, var(--success) 15%, var(--card)) !important; color: var(--success) !important; border-color: color-mix(in oklab, var(--success) 30%, transparent) !important; }
+        .bg-amber-100, .bg-amber-50 { background: color-mix(in oklab, var(--warning) 14%, var(--card)) !important; color: oklch(0.48 0.12 80) !important; border-color: color-mix(in oklab, var(--warning) 32%, transparent) !important; }
+        .text-amber-700, .text-amber-800, .text-amber-900, .text-amber-950, .text-amber-600 { color: oklch(0.50 0.12 78) !important; }
+        .bg-rose-50 { background: color-mix(in oklab, var(--destructive) 12%, var(--card)) !important; border-color: color-mix(in oklab, var(--destructive) 28%, transparent) !important; }
+        .text-rose-700, .text-rose-600 { color: var(--destructive) !important; }
+        .bg-sky-100 { background: var(--secondary) !important; }
+        .text-sky-700, .text-sky-800 { color: var(--muted-foreground) !important; }
+        .text-emerald-700, .text-emerald-600 { color: var(--success) !important; }
+
+        /* progress / meters flat token colors */
+        .bg-emerald-600, .bg-emerald-500 { background: var(--success) !important; border-radius: 9999px; }
+        .bg-sky-600, .bg-sky-500 { background: var(--muted-foreground) !important; border-radius: 9999px; }
+        .bg-slate-200 { background: var(--muted) !important; }
+
+        /* ============================================================= */
+        /* SIDEBAR                                                        */
+        /* ============================================================= */
+        .sidebar { background: var(--sidebar); border-right: 1px solid var(--sidebar-border); }
+        .side-group { font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--sidebar-muted); padding: 16px 12px 6px; font-weight: 500; }
+        .side-link {
+            width: 100%; display: flex; align-items: center; gap: 11px;
+            padding: 8px 12px; border-radius: calc(var(--radius) - 2px); margin-bottom: 2px;
+            color: var(--sidebar-foreground); font-size: 13px; font-weight: 500; text-align: left;
+            transition: background-color .15s ease, color .15s ease;
+        }
+        .side-link i { width: 16px; text-align: center; font-size: 13px; opacity: .8; }
+        .side-link:hover { background: oklch(1 0 0 / 6%); color: #fff; }
+        .side-link.active { background: var(--primary); color: var(--primary-foreground); font-weight: 500; }
+        .side-link.active i { opacity: 1; }
+        .side-badge { margin-left: auto; background: oklch(1 0 0 / 12%); color: #fff; font-size: 10.5px; font-weight: 600; padding: 1px 8px; border-radius: 9999px; }
+        .side-link.active .side-badge { background: oklch(1 0 0 / 22%); color: #fff; }
+        .sidebar .text-white { color: #fff !important; }
+        .sidebar .text-slate-400 { color: var(--sidebar-muted) !important; }
+
+        /* topbar */
+        .topbar { background: color-mix(in oklab, var(--background) 82%, transparent) !important; backdrop-filter: saturate(180%) blur(8px); -webkit-backdrop-filter: saturate(180%) blur(8px); border-bottom: 1px solid var(--border); }
+
+        /* citation chips → outline badge */
+        .citation-chip { background: color-mix(in oklab, var(--primary) 12%, var(--card)); color: var(--primary); border: 1px solid color-mix(in oklab, var(--primary) 30%, transparent); border-radius: calc(var(--radius) - 4px); box-shadow: none; font-family: 'Inter', sans-serif; }
+        .citation-chip:hover { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+        .source-highlight { background: color-mix(in oklab, var(--warning) 22%, var(--card)); border-left: 3px solid var(--primary); }
+
+        /* banner, source, modals, toast */
+        #review-banner { border-radius: var(--radius) !important; background: color-mix(in oklab, var(--warning) 12%, var(--card)) !important; border-color: color-mix(in oklab, var(--warning) 30%, transparent) !important; }
+        #source-viewer-body { background: var(--muted) !important; }
+        #source-viewer-body > div { box-shadow: 0 1px 3px 0 rgb(16 24 28 / .08) !important; border: 1px solid var(--border) !important; }
+        [id^="modal-"] > div { box-shadow: 0 24px 60px -20px rgb(16 24 28 / .5) !important; border-radius: var(--radius) !important; border: 1px solid var(--border) !important; }
+        [id^="modal-"] { background: oklch(0.23 0.02 200 / .45) !important; backdrop-filter: blur(2px); }
+        #toast { background: var(--foreground) !important; color: var(--background) !important; border: none !important; border-radius: calc(var(--radius) - 2px) !important; box-shadow: 0 16px 40px -12px rgb(16 24 28 / .45) !important; }
+        #toast .fa-circle-check { color: var(--success) !important; }
+
+        /* KPI accent rail */
+        #screen-dashboard .grid > .bg-white { position: relative; overflow: hidden; }
+        #screen-dashboard .grid > .bg-white::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background: var(--primary); }
+
+        /* screen fade */
+        .screen-view:not(.hidden) { animation: viewIn .28s ease; }
+        @keyframes viewIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform:none; } }
+        @media (prefers-reduced-motion: reduce) { .screen-view:not(.hidden){ animation:none; } *{ transition:none !important; } }
+
+        /* scrollbars */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px; }
+        .sidebar nav::-webkit-scrollbar-thumb { background: oklch(1 0 0 / 14%); }
+    </style>
+</head>
+<body class="h-full flex overflow-hidden text-xs text-slate-900">
+
+    <!-- ===================== SIDEBAR ===================== -->
+    <aside class="sidebar w-60 flex-none flex flex-col text-slate-300">
+        <div class="px-5 py-5 border-b border-white/10">
+            <svg viewBox="0 0 235 36" width="152" role="img" aria-label="Gluth Systemtechnik" style="height:auto;display:block">
+                <g fill="#ffffff">
+                    <path d="M153.96,15.25l.76-.44c.32,1.07,1.16,1.75,2.55,1.75s2.09-.65,2.09-1.6c0-1.03-.87-1.36-2.18-1.79-1.45-.48-2.84-.86-2.84-2.5s1.26-2.44,2.73-2.44,2.47.86,2.93,1.91l-.75.42c-.33-.8-1.02-1.47-2.18-1.47-1.07,0-1.84.56-1.84,1.53s.76,1.27,1.96,1.66c1.61.53,3.06.99,3.06,2.64,0,1.52-1.22,2.49-2.99,2.49-1.64,0-2.84-.82-3.3-2.16Z"/>
+                    <path d="M166.87,13.63v3.64h-.89v-3.67l-3.2-5.21h1l2.65,4.35,2.64-4.35h1l-3.22,5.24Z"/>
+                    <path d="M172.49,15.25l.76-.44c.32,1.07,1.16,1.75,2.55,1.75s2.09-.65,2.09-1.6c0-1.03-.87-1.36-2.18-1.79-1.45-.48-2.84-.86-2.84-2.5s1.26-2.44,2.73-2.44,2.47.86,2.93,1.91l-.75.42c-.33-.8-1.02-1.47-2.18-1.47-1.07,0-1.84.56-1.84,1.53s.76,1.27,1.96,1.66c1.61.53,3.06.99,3.06,2.64,0,1.52-1.22,2.49-2.99,2.49-1.64,0-2.84-.82-3.3-2.16Z"/>
+                    <path d="M187.85,9.22h-2.73v8.04h-.89v-8.04h-2.73v-.84h6.34v.84Z"/>
+                    <path d="M196.6,16.43v.84h-5.2v-8.88h5.14v.84h-4.25v3.15h3.93v.84h-3.93v3.22h4.31Z"/>
+                    <path d="M208.52,17.27h-.89v-7.53l-3.11,5.2h-.13l-3.11-5.2v7.53h-.89v-8.88h1.1l2.95,4.95,2.95-4.95h1.1v8.88h0Z"/>
+                    <path d="M160.04,24.45h-2.73v8.04h-.89v-8.04h-2.73v-.84h6.34v.84Z"/>
+                    <path d="M168.8,31.65v.84h-5.2v-8.88h5.14v.84h-4.25v3.15h3.93v.84h-3.93v3.22h4.31Z"/>
+                    <path d="M172.03,28.05c0-2.54,1.93-4.59,4.65-4.59,1.65,0,3.11.86,3.84,2.18l-.79.46c-.55-1.07-1.72-1.78-3.06-1.78-2.25,0-3.77,1.66-3.77,3.73s1.52,3.73,3.77,3.73c1.33,0,2.51-.71,3.06-1.78l.79.44c-.72,1.32-2.18,2.2-3.84,2.2-2.73,0-4.65-2.05-4.65-4.59Z"/>
+                    <path d="M190.86,23.61v8.88h-.89v-4.15h-4.82v4.15h-.89v-8.88h.89v3.9h4.82v-3.9h.89Z"/>
+                    <path d="M201.77,23.61v8.88h-.76l-4.95-7.23v7.23h-.89v-8.88h.76l4.95,7.23v-7.23s.89,0,.89,0Z"/>
+                    <path d="M206.97,23.61v8.88h-.89v-8.88h.89Z"/>
+                    <path d="M216.33,32.49l-4.16-4.3v4.3h-.89v-8.88h.89v4.06l4.03-4.06h1.17l-4.26,4.31,4.39,4.57h-1.17Z"/>
+                    <path d="M38.45,3.16h14.45v29.3h-14.45V3.16Z"/>
+                    <path d="M89.81,24.79V8.37l7.31-5.12h7.14v5.12h4.67v8.84h-4.67v6.01c0,.27.22.45.54.45h4.13v8.8h-9.78c-7.72,0-9.33-2.56-9.33-7.67Z"/>
+                    <path d="M72.73,8.37v14.31c0,.42-.26.77-.63.92-.05.02-.1.04-.15.05-.03,0-.07.01-.1.02-.01,0-.02,0-.03,0h-.02s-.05,0-.08,0h-.75s-.05,0-.08,0h-.1c-.24,0-.42-.1-.5-.27-.19-.18-.31-.44-.31-.73v-14.31h-14.18v18.72c0,3.5,2.24,5.03,6.46,5.39,6.06.49,12.12.49,18.18,0,4.22-.36,6.46-1.89,6.46-5.39V8.37h-14.18Z"/>
+                    <path d="M134.94,8.37h-8.66V3.16h-14.45v29.3h14.18v-15.5h1.75c.55,0,1,.45,1,1v14.5h14.18V15.59c0-5.7-1.89-7.22-7.99-7.22Z"/>
+                    <path d="M19.21,14.3v9.37h-1.86c-.49,0-.88-.39-.88-.88v-10.55c0-.38.31-.69.69-.69h18.4V3.16H9.25C3.2,3.16.77,5.45.37,9.35-.12,14.65-.12,20.8.37,26.27c.31,3.9,2.38,6.19,8.84,6.19h26.34V14.3h-16.34Z"/>
+                </g>
+                <rect fill="#4ab7a0" x="226.12" y="23.6" width="8.88" height="8.88"/>
+            </svg>
+            <div class="text-[10px] text-slate-400 mt-2.5 tracking-wide">RFQ Intelligence · Use Case 0</div>
+        </div>
+
+        <nav class="flex-1 overflow-y-auto p-3">
+            <div class="side-group">Workflow</div>
+            <button onclick="switchScreen('screen-queue')" id="nav-screen-queue" class="side-link active">
+                <i class="fa-solid fa-list-check"></i><span>Queue</span>
+            </button>
+            <button onclick="switchScreen('screen-review')" id="nav-screen-review" class="side-link">
+                <i class="fa-solid fa-file-signature"></i><span>Review</span>
+                <span id="review-badge" class="side-badge">3</span>
+            </button>
+            <button onclick="switchScreen('screen-search')" id="nav-screen-search" class="side-link">
+                <i class="fa-solid fa-magnifying-glass"></i><span>Precedent Search</span>
+            </button>
+
+            <div class="side-group">Governance</div>
+            <button onclick="switchScreen('screen-corrections')" id="nav-screen-corrections" class="side-link">
+                <i class="fa-solid fa-clock-rotate-left"></i><span>Correction Log</span>
+            </button>
+            <button onclick="switchScreen('screen-dashboard')" id="nav-screen-dashboard" class="side-link">
+                <i class="fa-solid fa-chart-line"></i><span>Dashboard</span>
+            </button>
+            <button onclick="switchScreen('screen-triage')" id="nav-screen-triage" class="side-link">
+                <i class="fa-solid fa-sliders"></i><span>Triage &amp; Rules</span>
+            </button>
+        </nav>
+
+        <div class="px-3 py-3 border-t border-white/10 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-bold text-white text-xs">MW</div>
+            <div class="leading-tight">
+                <div class="text-white text-xs font-semibold">M. Weber</div>
+                <div class="text-[10px] text-slate-400">BMW Lead Specialist</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ===================== CONTENT COLUMN ===================== -->
+    <div class="flex-1 flex flex-col min-w-0">
+        <header class="topbar h-14 flex-none px-7 flex items-center justify-between">
+            <div>
+                <div class="text-[11px] text-slate-400 font-medium">Use Case 0 · Technischer Vertrieb</div>
+                <h1 id="page-title" class="text-base font-bold text-slate-900 tracking-tight leading-tight">Inquiry Queue</h1>
+            </div>
+            <div class="flex items-center gap-2 text-[11px] text-brand-teal bg-brand-soft px-3 py-1.5 rounded-lg font-medium">
+                <span class="w-2 h-2 rounded-full bg-brand-mint"></span> M365 Tenant · read-only
+            </div>
+        </header>
+
+    <!-- Global Toast Alert Banner -->
+    <div id="toast" class="hidden fixed bottom-4 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-lg border border-slate-800 shadow-xl flex items-center space-x-3 text-xs font-mono animate-bounce">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toast-msg">Action completed successfully.</span>
+        <button onclick="hideToast()" class="text-slate-400 hover:text-white ml-2">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow overflow-y-auto bg-slate-100 p-4">
+
+        <!-- ========================================================================= -->
+        <!-- SCREEN 1 — QUEUE (The Landing Screen) -->
+        <!-- ========================================================================= -->
+        <section id="screen-queue" class="screen-view space-y-4">
+            
+            <!-- Filter Bar & Control Ribbon -->
+            <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-[11px] font-medium text-slate-500">Showing</span>
+                        <span class="font-mono text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-600" id="queue-count-badge">5 inquiries</span>
+                    </div>
+
+                    <button onclick="openNewInquiryModal()" class="bg-slate-950 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium text-xs transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-plus text-xs"></i>
+                        <span>New Inquiry</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-2 border-t border-slate-100">
+                    <!-- Customer Filter -->
+                    <div class="sm:col-span-3">
+                        <label class="block text-[10px] font-mono text-slate-500 uppercase mb-0.5">Filter by Customer</label>
+                        <select id="filter-customer" onchange="renderQueueTable()" class="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-slate-900">
+                            <option value="ALL">All Customers</option>
+                            <option value="BMW Group">BMW Group</option>
+                            <option value="Bosch GmbH">Bosch GmbH</option>
+                            <option value="Draexlmaier">Dräxlmaier</option>
+                            <option value="BMG">BMG / ArGe</option>
+                        </select>
+                    </div>
+
+                    <!-- Status Filter -->
+                    <div class="sm:col-span-3">
+                        <label class="block text-[10px] font-mono text-slate-500 uppercase mb-0.5">Filter by Status</label>
+                        <select id="filter-status" onchange="renderQueueTable()" class="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-slate-900">
+                            <option value="ALL">All Statuses</option>
+                            <option value="New">New</option>
+                            <option value="Awaiting review">Awaiting Review</option>
+                            <option value="Full review">Full Review Needed</option>
+                            <option value="Approved">Approved</option>
+                            <option value="Won">Won</option>
+                            <option value="Lost">Lost</option>
+                        </select>
+                    </div>
+
+                    <!-- Assigned to me toggle -->
+                    <div class="sm:col-span-3 flex items-end">
+                        <label class="flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded px-3 py-1.5 w-full cursor-pointer hover:bg-slate-100">
+                            <input type="checkbox" id="filter-assigned" onchange="renderQueueTable()" class="rounded text-slate-900 focus:ring-slate-900">
+                            <span class="font-medium text-xs text-slate-700">Assigned to Me (M. Weber)</span>
+                        </label>
+                    </div>
+
+                    <!-- Sort strategy info -->
+                    <div class="sm:col-span-3 flex items-end justify-end">
+                        <div class="text-[10px] text-slate-500 flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded w-full">
+                            <i class="fa-solid fa-arrow-down-short-wide text-slate-400"></i>
+                            <span>Low confidence &amp; full review shown first</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Queue Gallery Table -->
+            <div class="bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 font-mono text-[10px] text-slate-500 uppercase tracking-wider">
+                                <th class="p-3">Project No / Customer</th>
+                                <th class="p-3">Machine / Scope Name</th>
+                                <th class="p-3">Stage</th>
+                                <th class="p-3">Confidence</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queue-tbody" class="divide-y divide-slate-200 text-xs">
+                            <!-- Inquiries rendered via JS script below -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- SCREEN 2 — REVIEW WORKSPACE (Core Screen) -->
+        <!-- ========================================================================= -->
+        <section id="screen-review" class="screen-view hidden space-y-3">
+            
+            <!-- Top Confidence & Project Banner -->
+            <div id="review-banner" class="p-3 rounded-lg border flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs bg-amber-50 border-amber-200 text-amber-950">
+                <div class="flex items-start space-x-3">
+                    <div class="p-2 bg-amber-100 rounded text-amber-800 text-sm font-bold flex-none">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <span class="font-mono font-bold text-xs" id="review-project-no">A07622000</span>
+                            <span class="font-bold text-xs" id="review-machine-title">Hose Cutting, Greasing & Quad Crimp Line</span>
+                            <span id="review-confidence-pill" class="font-mono text-[10px] bg-amber-200 text-amber-900 border border-amber-300 font-bold px-2 py-0.5 rounded">LOW CONFIDENCE</span>
+                        </div>
+                        <p class="text-[11px] text-amber-800 mt-0.5" id="review-confidence-desc">
+                            No exact single-project precedent found. Citations cross-referenced from Bosch Norm N2580 v4.0 and BMW GS 95024. Full manual engineering verification required.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-2 flex-none">
+                    <button onclick="openCorrectionModal()" class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 px-3 py-1.5 rounded font-medium text-xs transition flex items-center space-x-1 shadow-2xs">
+                        <i class="fa-solid fa-pen-to-square text-amber-600"></i>
+                        <span>Correct...</span>
+                    </button>
+                    <button onclick="approveDraft()" class="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded font-bold text-xs transition flex items-center space-x-1.5 shadow-2xs">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Approve Draft</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Two-Pane Split Layout -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 h-[calc(100vh-185px)] min-h-[550px]">
+                
+                <!-- Left Pane: The Draft Outputs -->
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg flex flex-col overflow-hidden shadow-2xs">
+                    <!-- Tab Selector Header -->
+                    <div class="bg-slate-50 border-b border-slate-200 px-3 py-2 flex items-center justify-between">
+                        <div class="flex space-x-1 font-mono text-[11px]">
+                            <button onclick="switchDraftTab('tab-summary')" id="btn-tab-summary" class="draft-tab-btn px-3 py-1 rounded font-bold bg-white border border-slate-300 text-slate-900 shadow-2xs">
+                                1. Summary
+                            </button>
+                            <button onclick="switchDraftTab('tab-checklist')" id="btn-tab-checklist" class="draft-tab-btn px-3 py-1 rounded font-medium text-slate-600 hover:text-slate-900">
+                                2. Checkliste
+                            </button>
+                            <button onclick="switchDraftTab('tab-overview')" id="btn-tab-overview" class="draft-tab-btn px-3 py-1 rounded font-medium text-slate-600 hover:text-slate-900">
+                                3. Übersicht (Process)
+                            </button>
+                        </div>
+
+                        <span class="font-mono text-[10px] text-slate-400">CITATIONS LINKED [1] - [5]</span>
+                    </div>
+
+                    <!-- Left Tab Contents Scrollable Container -->
+                    <div class="p-4 flex-grow overflow-y-auto space-y-4">
+                        
+                        <!-- TAB 1: SUMMARY -->
+                        <div id="tab-summary" class="draft-content space-y-3 text-xs leading-relaxed text-slate-800">
+                            <div class="p-2.5 bg-brand-soft border border-brand-mint/30 rounded text-slate-700 text-[11px]">
+                                <i class="fa-solid fa-circle-info text-brand-teal mr-1"></i>
+                                Click any citation chip <span class="citation-chip">[1]</span> to jump directly to the verified source document page in the right pane.
+                            </div>
+
+                            <div class="space-y-2">
+                                <h3 class="font-bold text-xs text-slate-950 uppercase font-mono tracking-wide border-b border-slate-100 pb-1">Operational Requirements Summary</h3>
+                                <p>
+                                    The requested production system is an automated line designed to process flexible hoses in 3 distinct coil diameters (8mm, 10mm, 12mm) up to a length of 7,000mm <button onclick="highlightSourceCitation(1)" class="citation-chip">[1]</button>. Machine scale requires integrated re-coiling buffers to comply with maximum floor footprint limits <button onclick="highlightSourceCitation(2)" class="citation-chip">[2]</button>.
+                                </p>
+                                <p>
+                                    Internal hose lubrication mandates dual-grease dosage changeover between Grease Type 1 and Type 2 without cross-contamination <button onclick="highlightSourceCitation(3)" class="citation-chip">[3]</button>. Software integration must strictly implement OPC-UA telemetry encryption per revised customer standard <button onclick="highlightSourceCitation(4)" class="citation-chip">[4]</button>.
+                                </p>
+                            </div>
+
+                            <!-- Open Questions & Flags Section -->
+                            <div class="p-3 bg-amber-50/80 border border-amber-200 rounded-lg space-y-2 mt-4">
+                                <div class="flex items-center space-x-1.5 font-bold font-mono text-xs text-amber-900">
+                                    <i class="fa-solid fa-flag text-amber-600"></i>
+                                    <span>Open Questions & Risk Flags (⚑ 3 Found)</span>
+                                </div>
+                                <ul class="space-y-1.5 text-[11px] text-amber-950 list-disc list-inside pl-1">
+                                    <li><strong>Unspecified Cap Torque:</strong> Customer specification does not specify maximum tightening torque for hose end screw caps <button onclick="highlightSourceCitation(5)" class="citation-chip">[5]</button>.</li>
+                                    <li><strong>Software Standard Delta:</strong> Bosch Norm N2580 updated to v4.0 (MQTT broker required; standard 2023 PLC template is non-compliant).</li>
+                                    <li><strong>Cycle Time Ambiguity:</strong> Target takt time stated as "under 18s" but does not define coil changeover overhead.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- TAB 2: CHECKLISTE -->
+                        <div id="tab-checklist" class="draft-content hidden space-y-3">
+                            <h3 class="font-bold text-xs text-slate-950 uppercase font-mono tracking-wide border-b border-slate-100 pb-1">Technical Fit & Decision Matrix</h3>
+                            <div class="space-y-2 font-mono text-[11px]">
+                                <div class="p-2 bg-slate-50 border rounded flex justify-between items-center">
+                                    <span>1. Machine footprint fits standard assembly bay</span>
+                                    <span class="text-emerald-700 font-bold">✓ PASS [Page 4]</span>
+                                </div>
+                                <div class="p-2 bg-slate-50 border rounded flex justify-between items-center">
+                                    <span>2. Assembly know-how matches internal capabilities</span>
+                                    <span class="text-emerald-700 font-bold">✓ PASS [Page 12]</span>
+                                </div>
+                                <div class="p-2 bg-amber-50 border border-amber-200 rounded flex justify-between items-center text-amber-900">
+                                    <span>3. OPC-UA v4.0 Software Compliance</span>
+                                    <span class="font-bold text-amber-700">⚑ NON-COMPLIANT · MQTT broker required</span>
+                                </div>
+                                <div class="p-2 bg-slate-50 border rounded flex justify-between items-center">
+                                    <span>4. Applicable norms identified &amp; current</span>
+                                    <span class="text-emerald-700 font-bold">✓ PASS · N2580 v4.0 linked</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB 3: ÜBERSICHT -->
+                        <div id="tab-overview" class="draft-content hidden space-y-3">
+                            <h3 class="font-bold text-xs text-slate-950 uppercase font-mono tracking-wide border-b border-slate-100 pb-1">Extracted Process Sequence Diagram</h3>
+                            <div class="space-y-2 text-xs">
+                                <div class="p-2.5 bg-slate-50 border border-slate-200 rounded flex items-center space-x-3">
+                                    <span class="w-5 h-5 bg-slate-950 text-white rounded-full flex items-center justify-center font-mono text-[10px]">1</span>
+                                    <div>
+                                        <div class="font-bold text-slate-900">3-Coil Hose Feed & Cut Station</div>
+                                        <div class="text-[11px] text-slate-500">Uncoils 8/10/12mm hoses up to 7,000mm length <button onclick="highlightSourceCitation(1)" class="citation-chip">[1]</button></div>
+                                    </div>
+                                </div>
+                                <div class="p-2.5 bg-slate-50 border border-slate-200 rounded flex items-center space-x-3">
+                                    <span class="w-5 h-5 bg-slate-950 text-white rounded-full flex items-center justify-center font-mono text-[10px]">2</span>
+                                    <div>
+                                        <div class="font-bold text-slate-900">Re-Coiling & Buffer Unit</div>
+                                        <div class="text-[11px] text-slate-500">Prevents floor space collision during inline transport <button onclick="highlightSourceCitation(2)" class="citation-chip">[2]</button></div>
+                                    </div>
+                                </div>
+                                <div class="p-2.5 bg-amber-50 border border-amber-200 rounded flex items-center space-x-3">
+                                    <span class="w-5 h-5 bg-amber-600 text-white rounded-full flex items-center justify-center font-mono text-[10px]">3</span>
+                                    <div>
+                                        <div class="font-bold text-amber-950">Dual Grease Dosage Injector</div>
+                                        <div class="text-[11px] text-amber-800">Switches Type 1 / Type 2 grease dynamically <button onclick="highlightSourceCitation(3)" class="citation-chip">[3]</button></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Right Pane: The Source Viewer -->
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg flex flex-col overflow-hidden shadow-2xs">
+                    <!-- Source Viewer Toolbar Header -->
+                    <div class="bg-slate-50 border-b border-slate-200 px-3 py-2 flex items-center justify-between font-mono text-[11px]">
+                        <div class="flex items-center space-x-2 text-slate-800">
+                            <i class="fa-solid fa-file-pdf text-rose-600"></i>
+                            <span id="source-doc-name" class="font-bold">BMW_Hose_Line_Spec_v2.pdf</span>
+                        </div>
+                        <div class="flex items-center space-x-2 text-slate-500">
+                            <span id="source-page-indicator" class="bg-white border px-2 py-0.5 rounded text-slate-700">Page 12 of 78</span>
+                            <span class="text-xs">|</span>
+                            <span>Scale 100%</span>
+                        </div>
+                    </div>
+
+                    <!-- Source Viewer Document Content Mockup -->
+                    <div class="p-4 flex-grow overflow-y-auto bg-slate-200/50 font-mono text-[11px] leading-relaxed space-y-3" id="source-viewer-body">
+                        
+                        <div class="bg-white p-5 rounded border border-slate-300 shadow-xs space-y-3 min-h-[500px]">
+                            <div class="text-right text-[9px] text-slate-400 uppercase tracking-widest border-b pb-1">CONFIDENTIAL // BMW GROUP SPECIFICATION</div>
+                            
+                            <!-- Document Title -->
+                            <div class="font-bold text-sm text-slate-900 border-b pb-2">
+                                SECTION 3.2 — HOSE FEEDING, CUTTING & GREASING PARAMS
+                            </div>
+
+                            <p class="text-slate-600 text-[10px]">
+                                Document Ref: BMW-GS-95024-3 | Version 2.8 | Author: Engineering Standard Dept.
+                            </p>
+
+                            <!-- Paragraph 1 (Citation 1 target) -->
+                            <div id="src-line-1" class="p-2 rounded transition">
+                                <span class="text-slate-400 text-[9px] font-bold">[REF 3.2.1]</span>
+                                <span class="text-slate-800">
+                                    The hose processing machine shall accept flexible hose stock from three (3) parallel decoiler positions handling 8mm, 10mm, and 12mm internal diameter hoses up to a maximum uncoiled cut length of 7,000mm.
+                                </span>
+                            </div>
+
+                            <!-- Paragraph 2 (Citation 2 target) -->
+                            <div id="src-line-2" class="p-2 rounded transition">
+                                <span class="text-slate-400 text-[9px] font-bold">[REF 3.2.4]</span>
+                                <span class="text-slate-800">
+                                    To satisfy the physical footprint restriction of Assembly Cell Bay #4, cut hose sections exceeding 3,000mm must undergo immediate inline re-coiling prior to station transfer.
+                                </span>
+                            </div>
+
+                            <!-- Paragraph 3 (Citation 3 target) -->
+                            <div id="src-line-3" class="p-2 rounded transition">
+                                <span class="text-slate-400 text-[9px] font-bold">[REF 4.1.2]</span>
+                                <span class="text-slate-800">
+                                    Internal lubrication unit must support dynamic changeover between Grease Grade 1 (Standard synthetic) and Grease Grade 2 (High temp) with automatic purge cycle.
+                                </span>
+                            </div>
+
+                            <!-- Paragraph 4 (Citation 4 target) -->
+                            <div id="src-line-4" class="p-2 rounded transition">
+                                <span class="text-slate-400 text-[9px] font-bold">[REF 8.0.1]</span>
+                                <span class="text-slate-800">
+                                    PLC Software interface mandatory telemetry protocol updated to Bosch N2580-10 v4.0 requiring encrypted OPC-UA endpoints over TLS 1.3.
+                                </span>
+                            </div>
+
+                            <!-- Paragraph 5 (Citation 5 target) -->
+                            <div id="src-line-5" class="p-2 rounded transition">
+                                <span class="text-slate-400 text-[9px] font-bold">[REF 9.3.0]</span>
+                                <span class="text-slate-800">
+                                    End cap sealing screw assembly step required for variant B (non-fitted variant). Cap torque parameters to be agreed upon during pre-acceptance testing.
+                                </span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- SCREEN 3 — PRECEDENT SEARCH (The Standalone Feature) -->
+        <!-- ========================================================================= -->
+        <section id="screen-search" class="screen-view hidden space-y-4 max-w-5xl mx-auto">
+            
+            <div class="bg-white p-6 rounded-lg border border-slate-200 shadow-2xs space-y-4">
+                <div>
+                    <h2 class="font-bold text-base text-slate-950">Precedent Search & Historical Project Vault</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                        Answer "Did we ever build something like this?" in plain language across 15+ years of GLUTH engineering offers and R-Numbers.
+                    </p>
+                </div>
+
+                <!-- Single Prominent Search Box -->
+                <div class="relative">
+                    <i class="fa-solid fa-wand-magic-sparkles absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                    <input type="text" id="precedent-search-input" onkeyup="executePrecedentSearch()" placeholder="Beschreibe die Maschine... e.g. Schläuche ablängen, fetten, beidseitig Fittings crimpen" class="w-full pl-10 pr-24 py-3 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-950 font-medium">
+                    <button onclick="executePrecedentSearch()" class="absolute right-2 top-2 bg-slate-950 text-white text-xs px-3 py-1.5 rounded font-medium hover:bg-slate-800">
+                        Search
+                    </button>
+                </div>
+
+                <!-- Quick Sample Query Chips -->
+                <div class="flex items-center space-x-2 font-mono text-[10px]">
+                    <span class="text-slate-400">Quick samples:</span>
+                    <button onclick="fillSearch('Schläuche ablängen, fetten und crimpen')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">Hose crimping</button>
+                    <button onclick="fillSearch('Bosch Ventilblock Entgraten und Spülen')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">Valve block deburring</button>
+                    <button onclick="fillSearch('Dichtheitsprüfung End-of-Line Tester')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">EOL Leak tester</button>
+                </div>
+            </div>
+
+            <!-- Search Results Section (Multiple Comparables) -->
+            <div class="space-y-3">
+                <div class="flex justify-between items-center text-xs font-mono text-slate-500">
+                    <span id="search-results-count">3 Comparables Found in Vault</span>
+                    <span>Order by relevance</span>
+                </div>
+
+                <div id="precedent-results-container" class="space-y-3">
+                    <!-- Cards injected via JS script below -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- SCREEN 4 — CORRECTION LOG (Drift Early Warning) -->
+        <!-- ========================================================================= -->
+        <section id="screen-corrections" class="screen-view hidden space-y-4">
+            
+            <!-- Monthly Summary Strip -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] font-mono text-slate-500 uppercase">Corrections This Month</div>
+                    <div class="text-xl font-bold font-mono text-slate-950 mt-1" id="stat-corrections-count">14</div>
+                    <div class="text-[10px] text-emerald-600 mt-0.5">↓ -18% vs prior month</div>
+                </div>
+
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] font-mono text-slate-500 uppercase">Most-Corrected Field</div>
+                    <div class="text-xs font-bold font-mono text-amber-700 mt-1">Norm version</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">6 of 14 edits · drift signal</div>
+                </div>
+
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] font-mono text-slate-500 uppercase">Identified Stale Norms</div>
+                    <div class="text-xs font-bold font-mono text-rose-700 mt-1">Bosch N2580 v3.1</div>
+                    <div class="text-[10px] text-rose-600 mt-0.5">Requires KB re-indexing</div>
+                </div>
+
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] font-mono text-slate-500 uppercase">Next Review Date</div>
+                    <div class="text-xs font-bold font-mono text-slate-900 mt-1">01.09.2026</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">Monthly team drift check</div>
+                </div>
+            </div>
+
+            <!-- Correction Log Table Container -->
+            <div class="bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+                <div class="p-3 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                    <div class="font-mono font-bold text-xs text-slate-900">HUMAN FEEDBACK & CORRECTION AUDIT LOG</div>
+                    <div class="flex space-x-2">
+                        <select id="filter-route-tag" onchange="renderCorrectionLog()" class="bg-white border border-slate-200 rounded px-2 py-1 text-xs">
+                            <option value="ALL">All Route Tags</option>
+                            <option value="Drift">Drift (KB Stale)</option>
+                            <option value="Content">Content Fix</option>
+                            <option value="OK">OK / Minor</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50/50 border-b border-slate-200 font-mono text-[10px] text-slate-500 uppercase">
+                                <th class="p-3">Timestamp</th>
+                                <th class="p-3">Draft / Project</th>
+                                <th class="p-3">Field Corrected</th>
+                                <th class="p-3">Reviewer Action / Change</th>
+                                <th class="p-3">Route Tag</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corrections-tbody" class="divide-y divide-slate-200 text-xs font-mono">
+                            <!-- Injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- SCREEN 5 — DASHBOARD (Management & Targets) -->
+        <!-- ========================================================================= -->
+        <section id="screen-dashboard" class="screen-view hidden space-y-4">
+            
+            <!-- 4 Target KPI Tiles -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                
+                <!-- KPI 1 -->
+                <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2">
+                    <div class="flex justify-between items-start text-[10px] font-mono text-slate-500">
+                        <span>CORRECT-SOURCE RATE</span>
+                        <span class="text-emerald-700 font-bold">Target ≥90%</span>
+                    </div>
+                    <div class="text-2xl font-bold font-mono text-slate-950">93.4%</div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-emerald-600 h-full" style="width: 93.4%"></div>
+                    </div>
+                    <div class="text-[10px] text-slate-500 font-mono">↑ +2.1% this week</div>
+                </div>
+
+                <!-- KPI 2 -->
+                <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2">
+                    <div class="flex justify-between items-start text-[10px] font-mono text-slate-500">
+                        <span>TIME SAVED PER DRAFT</span>
+                        <span class="text-emerald-700 font-bold">Target ≥40%</span>
+                    </div>
+                    <div class="text-2xl font-bold font-mono text-slate-950">52.0%</div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-emerald-600 h-full" style="width: 52%"></div>
+                    </div>
+                    <div class="text-[10px] text-slate-500 font-mono">Avg 2.4 hrs → 40 mins</div>
+                </div>
+
+                <!-- KPI 3 -->
+                <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2">
+                    <div class="flex justify-between items-start text-[10px] font-mono text-slate-500">
+                        <span>% CLAIMS CITED</span>
+                        <span class="text-emerald-700 font-bold">Target 100%</span>
+                    </div>
+                    <div class="text-2xl font-bold font-mono text-slate-950">100%</div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-emerald-600 h-full" style="width: 100%"></div>
+                    </div>
+                    <div class="text-[10px] text-slate-500 font-mono">Every claim linked to page</div>
+                </div>
+
+                <!-- KPI 4 -->
+                <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2">
+                    <div class="flex justify-between items-start text-[10px] font-mono text-slate-500">
+                        <span>% BLIND RE-CHECKED</span>
+                        <span class="text-sky-700 font-bold">Target 10%</span>
+                    </div>
+                    <div class="text-2xl font-bold font-mono text-slate-950">11.2%</div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-sky-600 h-full" style="width: 11.2%"></div>
+                    </div>
+                    <div class="text-[10px] text-slate-500 font-mono">Random quality control audit</div>
+                </div>
+
+            </div>
+
+            <!-- Lower Visuals: Confidence Mix & Queue Health -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-3">
+                    <h3 class="font-bold text-xs uppercase font-mono text-slate-950">Confidence Mix of Recent Drafts</h3>
+                    <div class="space-y-2 font-mono text-xs">
+                        <div>
+                            <div class="flex justify-between text-[11px] text-slate-600 mb-1">
+                                <span>High Confidence (Light Review)</span>
+                                <span class="font-bold text-emerald-700">68% (17 Drafts)</span>
+                            </div>
+                            <div class="w-full bg-slate-100 h-3 rounded">
+                                <div class="bg-emerald-500 h-full rounded" style="width: 68%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-[11px] text-slate-600 mb-1">
+                                <span>Low Confidence (Full Human Review)</span>
+                                <span class="font-bold text-amber-700">22% (5 Drafts)</span>
+                            </div>
+                            <div class="w-full bg-slate-100 h-3 rounded">
+                                <div class="bg-amber-500 h-full rounded" style="width: 22%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-[11px] text-slate-600 mb-1">
+                                <span>Blind Re-Check Pool</span>
+                                <span class="font-bold text-sky-700">10% (3 Drafts)</span>
+                            </div>
+                            <div class="w-full bg-slate-100 h-3 rounded">
+                                <div class="bg-sky-500 h-full rounded" style="width: 10%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-3">
+                    <h3 class="font-bold text-xs uppercase font-mono text-slate-950">Pipeline & Queue Throughput</h3>
+                    <div class="grid grid-cols-2 gap-3 font-mono">
+                        <div class="p-3 bg-slate-50 border rounded text-center">
+                            <span class="text-[10px] text-slate-500 block">TOTAL INCOMING QUEUE</span>
+                            <span class="text-xl font-bold text-slate-900 mt-1 block">24 RFQs</span>
+                        </div>
+                        <div class="p-3 bg-amber-50 border border-amber-200 rounded text-center">
+                            <span class="text-[10px] text-amber-800 block">AWAITING REVIEW NOW</span>
+                            <span class="text-xl font-bold text-amber-900 mt-1 block">3 RFQs</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- SCREEN 6 — TRIAGE & ASSIGNMENT (Admin Rules) -->
+        <!-- ========================================================================= -->
+        <section id="screen-triage" class="screen-view hidden space-y-4">
+            
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                
+                <!-- Left Column: Bid / No-Bid Decision Panel -->
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-4">
+                    <div class="border-b pb-2 flex justify-between items-center">
+                        <h3 class="font-bold text-xs uppercase font-mono text-slate-950">Bid / No-Bid Decision Matrix</h3>
+                        <span class="font-mono text-[10px] text-slate-500">Active Inquiry: A07622000</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs">
+                        <label class="flex items-center space-x-2 p-2 bg-slate-50 border rounded cursor-pointer">
+                            <input type="checkbox" checked id="tb-scale" class="rounded text-slate-900 focus:ring-slate-900">
+                            <span>Machine fits standard plant footprint and ceiling clearance</span>
+                        </label>
+
+                        <label class="flex items-center space-x-2 p-2 bg-slate-50 border rounded cursor-pointer">
+                            <input type="checkbox" checked id="tb-intent" class="rounded text-slate-900 focus:ring-slate-900">
+                            <span>Customer has verified budget intent (Not pricing check)</span>
+                        </label>
+
+                        <label class="flex items-center space-x-2 p-2 bg-slate-50 border rounded cursor-pointer">
+                            <input type="checkbox" checked id="tb-tech" class="rounded text-slate-900 focus:ring-slate-900">
+                            <span>Assembly know-how aligns with company expertise</span>
+                        </label>
+
+                        <label class="flex items-center space-x-2 p-2 bg-slate-50 border rounded cursor-pointer">
+                            <input type="checkbox" id="tb-capacity" class="rounded text-slate-900 focus:ring-slate-900">
+                            <span>Assigned engineer capacity available next 2 weeks</span>
+                        </label>
+                    </div>
+
+                    <div class="pt-2 border-t space-y-2">
+                        <label class="block text-[10px] font-mono text-slate-500 uppercase">Assigned Engineer</label>
+                        <select class="w-full bg-slate-50 border border-slate-300 rounded px-2 py-1.5 text-xs font-medium">
+                            <option value="MW">M. Weber (BMW Specialist)</option>
+                            <option value="KS">K. Schmidt (Bosch / SupplyOn Expert)</option>
+                            <option value="HB">H. Becker (General Automation)</option>
+                        </select>
+                    </div>
+
+                    <div class="flex space-x-2 pt-2">
+                        <button onclick="triggerToast('Marked Inquiry as APPROVED FOR BID (GO)')" class="w-1/2 bg-emerald-700 text-white text-xs py-2 rounded font-bold hover:bg-emerald-800 transition">
+                            BID (GO)
+                        </button>
+                        <button onclick="triggerToast('Marked Inquiry as DECLINED (NO-BID)')" class="w-1/2 bg-rose-700 text-white text-xs py-2 rounded font-bold hover:bg-rose-800 transition">
+                            NO-BID
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right Column: Routing Rules & User Directory -->
+                <div class="lg:col-span-6 space-y-4">
+                    
+                    <!-- Routing Rules View -->
+                    <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-3">
+                        <h3 class="font-bold text-xs uppercase font-mono text-slate-950 border-b pb-2">Customer Automated Routing Rules</h3>
+                        <div class="space-y-2 font-mono text-[11px]">
+                            <div class="p-2 bg-slate-50 border rounded flex justify-between items-center">
+                                <span>BMW Group → M. Weber</span>
+                                <span class="text-slate-500 text-[10px]">Excel Cost Matrix Specialist</span>
+                            </div>
+                            <div class="p-2 bg-slate-50 border rounded flex justify-between items-center">
+                                <span>Bosch GmbH → K. Schmidt</span>
+                                <span class="text-slate-500 text-[10px]">SupplyOn Portal Expert</span>
+                            </div>
+                            <div class="p-2 bg-slate-50 border rounded flex justify-between items-center">
+                                <span>Unknown Customer → Admin Triage</span>
+                                <span class="text-slate-500 text-[10px]">Manual Route</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pilot Users Directory -->
+                    <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-3">
+                        <h3 class="font-bold text-xs uppercase font-mono text-slate-950 border-b pb-2">Pilot Engineers & Access Scope</h3>
+                        <div class="space-y-2 text-xs">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <div class="font-bold text-slate-900">M. Weber</div>
+                                    <div class="text-[10px] text-slate-500 font-mono">BMW Lead · Full Access</div>
+                                </div>
+                                <span class="mono text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">Active</span>
+                            </div>
+                            <div class="flex justify-between items-center border-t pt-2">
+                                <div>
+                                    <div class="font-bold text-slate-900">K. Schmidt</div>
+                                    <div class="text-[10px] text-slate-500 font-mono">Bosch Lead · Full Access</div>
+                                </div>
+                                <span class="mono text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">Active</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+    </main>
+    </div><!-- /content column -->
+
+    <!-- ========================================================================= -->
+    <!-- MODAL 1: CORRECT FORM MODAL (One-Click Correction Log Writing) -->
+    <!-- ========================================================================= -->
+    <div id="modal-correct" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg border border-slate-200 max-w-md w-full p-4 shadow-xl space-y-3">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-xs font-mono uppercase text-slate-950">Record Reviewer Correction</h3>
+                <button onclick="closeCorrectionModal()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Target Field / Section</label>
+                    <input type="text" id="corr-field" value="Norm section reference" class="w-full bg-slate-50 border rounded p-1.5 font-mono text-xs">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">What You Corrected / Notes</label>
+                    <textarea id="corr-action" rows="2" class="w-full bg-slate-50 border rounded p-1.5 text-xs" placeholder="e.g. Draft cited a superseded norm revision — corrected to the current version and re-linked to source"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Route Tag (Signal Pattern)</label>
+                    <select id="corr-tag" class="w-full bg-slate-50 border rounded p-1.5 text-xs font-mono font-bold">
+                        <option value="Drift">Drift (KB or norm stale)</option>
+                        <option value="Content">Content Fix (Missing spec detail)</option>
+                        <option value="OK">OK (Minor formatting)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex space-x-2 pt-2 border-t">
+                <button onclick="closeCorrectionModal()" class="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded font-medium text-xs">
+                    Cancel
+                </button>
+                <button onclick="saveCorrection()" class="w-1/2 bg-slate-950 hover:bg-slate-800 text-white py-1.5 rounded font-bold text-xs">
+                    Save Correction Log
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: NEW INQUIRY CREATION MODAL -->
+    <div id="modal-new-inquiry" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg border border-slate-200 max-w-md w-full p-4 shadow-xl space-y-3">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-xs font-mono uppercase text-slate-950">+ Ingest New Inquiry</h3>
+                <button onclick="closeNewInquiryModal()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Project Number</label>
+                    <input type="text" id="new-proj-no" value="A07622004" class="w-full bg-slate-50 border rounded p-1.5 font-mono text-xs">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Customer Name</label>
+                    <select id="new-proj-customer" class="w-full bg-slate-50 border rounded p-1.5 text-xs">
+                        <option value="BMW Group">BMW Group</option>
+                        <option value="Bosch GmbH">Bosch GmbH</option>
+                        <option value="Draexlmaier">Dräxlmaier</option>
+                            <option value="BMG">BMG / ArGe</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Machine / Scope Title</label>
+                    <input type="text" id="new-proj-title" placeholder="e.g. Laser Hose Marking Station" class="w-full bg-slate-50 border rounded p-1.5 text-xs">
+                </div>
+            </div>
+
+            <div class="flex space-x-2 pt-2 border-t">
+                <button onclick="closeNewInquiryModal()" class="w-1/2 bg-slate-100 text-slate-700 py-1.5 rounded font-medium text-xs">
+                    Cancel
+                </button>
+                <button onclick="submitNewInquiry()" class="w-1/2 bg-slate-950 text-white py-1.5 rounded font-bold text-xs">
+                    Ingest Inquiry
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- APPLICATION STATE & LOGIC -->
+    <!-- ========================================================================= -->
+    <script>
+        // 1. DATASETS
+        let inquiries = [
+            {
+                projNo: "A07622000",
+                machineName: "Hose Cutting, Greasing & Quad Crimp Line",
+                customer: "BMW Group",
+                stage: "2_Anfrage",
+                confidence: "Low",
+                status: "Full review",
+                assignedTo: "M. Weber"
+            },
+            {
+                projNo: "R07591",
+                machineName: "Montage Magnetanker (Solenoid Armature)",
+                customer: "Bosch GmbH",
+                stage: "3_Angebot",
+                confidence: "Low",
+                status: "Awaiting review",
+                assignedTo: "K. Schmidt"
+            },
+            {
+                projNo: "A07616000",
+                machineName: "Kabelvormontage (PA Wire Pre-Assembly)",
+                customer: "Dräxlmaier",
+                stage: "2_Anfrage",
+                confidence: "High",
+                status: "New",
+                assignedTo: "M. Weber"
+            },
+            {
+                projNo: "A07614000",
+                machineName: "Pinholeerkennung (Pinhole Detection)",
+                customer: "BMW Group",
+                stage: "8_Nachtrag",
+                confidence: "High",
+                status: "Approved",
+                assignedTo: "H. Becker"
+            }
+        ];
+
+        let correctionLogs = [
+            {
+                timestamp: "2026-08-20 10:14",
+                draft: "A07622000",
+                field: "Wash-Norm version",
+                action: "Draft cited Rev.6 of the referenced wash norm; current table lists Rev.8 — corrected and re-linked",
+                tag: "Drift"
+            },
+            {
+                timestamp: "2026-08-19 14:32",
+                draft: "R07591",
+                field: "Bosch OPC-UA Version",
+                action: "Updated software spec line item to N2580 v4.0 TLS requirements",
+                tag: "Drift"
+            },
+            {
+                timestamp: "2026-08-18 09:05",
+                draft: "A07616000",
+                field: "Process step (Übersicht)",
+                action: "Added missing grease Type-2 dosing station to the process overview",
+                tag: "Content"
+            }
+        ];
+
+        const precedentData = [
+            {
+                projNo: "R-7622-000",
+                customer: "BMW Group",
+                year: "2023",
+                title: "Automated Hose Cutting & Crimping Line",
+                whyMatched: "Exact match for 3-coil decoiling, hose cutting up to 7,000mm, dual grease injection and 4x sleeve crimp stations."
+            },
+            {
+                projNo: "R-5411-010",
+                customer: "Bosch GmbH",
+                year: "2021",
+                title: "Bosch Valve Body Greasing & Press Unit",
+                whyMatched: "Matches grease injector changeover logic between Type 1 and Type 2 synthetic lubricants."
+            },
+            {
+                projNo: "R-3109-002",
+                customer: "Dräxlmaier",
+                year: "2018",
+                title: "Small Parts Hose Injector & End Cap Sealer",
+                whyMatched: "Shares end cap screw sealing unit kinematics for non-fitted hose variants."
+            }
+        ];
+
+        // 2. SCREEN NAVIGATION
+        const PAGE_TITLES = {
+            'screen-queue': 'Inquiry Queue',
+            'screen-review': 'Review Workspace',
+            'screen-search': 'Precedent Search',
+            'screen-corrections': 'Correction Log',
+            'screen-dashboard': 'Performance Dashboard',
+            'screen-triage': 'Triage & Routing Rules'
+        };
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen-view').forEach(s => s.classList.add('hidden'));
+            const target = document.getElementById(screenId);
+            if (target) target.classList.remove('hidden');
+
+            document.querySelectorAll('.side-link').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.getElementById('nav-' + screenId);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const pt = document.getElementById('page-title');
+            if (pt) pt.textContent = PAGE_TITLES[screenId] || '';
+
+            if (screenId === 'screen-corrections') renderCorrectionLog();
+            if (screenId === 'screen-search') executePrecedentSearch();
+        }
+
+        // 3. SCREEN 1: QUEUE RENDER & SORT
+        function renderQueueTable() {
+            const customerFilter = document.getElementById('filter-customer').value;
+            const statusFilter = document.getElementById('filter-status').value;
+            const assignedFilter = document.getElementById('filter-assigned').checked;
+
+            let filtered = inquiries.filter(item => {
+                if (customerFilter !== 'ALL' && item.customer !== customerFilter) return false;
+                if (statusFilter !== 'ALL' && item.status !== statusFilter) return false;
+                if (assignedFilter && item.assignedTo !== 'M. Weber') return false;
+                return true;
+            });
+
+            // Default Sort: Low confidence and "Full review" float to top
+            filtered.sort((a, b) => {
+                const priorityA = (a.confidence === 'Low' || a.status === 'Full review') ? 0 : 1;
+                const priorityB = (b.confidence === 'Low' || b.status === 'Full review') ? 0 : 1;
+                return priorityA - priorityB;
+            });
+
+            const tbody = document.getElementById('queue-tbody');
+            tbody.innerHTML = '';
+
+            filtered.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 cursor-pointer transition';
+                tr.onclick = () => openInquiryInReview(item.projNo);
+
+                const confPill = item.confidence === 'High' 
+                    ? `<span class="font-mono text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-2 py-0.5 rounded">High Confidence</span>`
+                    : `<span class="font-mono text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-bold px-2 py-0.5 rounded">Low Confidence</span>`;
+
+                let statusBadge = `<span class="font-mono text-[10px] px-2 py-0.5 rounded border `;
+                if (item.status === 'Full review') statusBadge += `bg-rose-50 text-rose-700 border-rose-200 font-bold">Full review</span>`;
+                else if (item.status === 'Awaiting review') statusBadge += `bg-amber-50 text-amber-800 border-amber-200">Awaiting review</span>`;
+                else if (item.status === 'Approved') statusBadge += `bg-emerald-50 text-emerald-700 border-emerald-200">Approved</span>`;
+                else statusBadge += `bg-slate-100 text-slate-700 border-slate-200">${item.status}</span>`;
+
+                tr.innerHTML = `
+                    <td class="p-3">
+                        <div class="font-mono font-bold text-slate-950">${item.projNo}</div>
+                        <div class="text-[11px] text-slate-500">${item.customer}</div>
+                    </td>
+                    <td class="p-3">
+                        <div class="font-semibold text-slate-900">${item.machineName}</div>
+                        <div class="text-[10px] text-slate-500 font-mono">Assigned: ${item.assignedTo}</div>
+                    </td>
+                    <td class="p-3 font-mono text-[11px] text-slate-600">${item.stage}</td>
+                    <td class="p-3">${confPill}</td>
+                    <td class="p-3">${statusBadge}</td>
+                    <td class="p-3 text-right">
+                        <span class="text-slate-400 hover:text-slate-950 text-xs font-mono">Review →</span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('queue-count-badge').textContent = `${filtered.length} inquiries`;
+        }
+
+        // 4. SCREEN 2: REVIEW PANE ACTIONS & CITATION JUMP
+        function openInquiryInReview(projNo) {
+            const item = inquiries.find(i => i.projNo === projNo) || inquiries[0];
+            document.getElementById('review-project-no').textContent = item.projNo;
+            document.getElementById('review-machine-title').textContent = item.machineName;
+            switchScreen('screen-review');
+        }
+
+        function switchDraftTab(tabId) {
+            document.querySelectorAll('.draft-content').forEach(c => c.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+
+            document.querySelectorAll('.draft-tab-btn').forEach(btn => {
+                btn.className = 'draft-tab-btn px-3 py-1 rounded font-medium text-slate-600 hover:text-slate-900';
+            });
+            const activeBtn = document.getElementById('btn-' + tabId);
+            activeBtn.className = 'draft-tab-btn px-3 py-1 rounded font-bold bg-white border border-slate-300 text-slate-900 shadow-2xs';
+        }
+
+        function highlightSourceCitation(citationId) {
+            // Remove previous highlights
+            for (let i = 1; i <= 5; i++) {
+                const el = document.getElementById('src-line-' + i);
+                if (el) el.className = 'p-2 rounded transition';
+            }
+
+            const targetLine = document.getElementById('src-line-' + citationId);
+            if (targetLine) {
+                targetLine.className = 'p-2 rounded transition source-highlight';
+                targetLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+
+            const pages = { 1: 12, 2: 12, 3: 15, 4: 28, 5: 32 };
+            document.getElementById('source-page-indicator').textContent = `Page ${pages[citationId] || 12} of 78`;
+            triggerToast(`Jumped to verified source reference [${citationId}] on Page ${pages[citationId] || 12}`);
+        }
+
+        function approveDraft() {
+            triggerToast('Approved draft! Inquiry moved forward.');
+        }
+
+        // 5. MODAL & CORRECTION LOG LOGIC
+        function openCorrectionModal() {
+            document.getElementById('modal-correct').classList.remove('hidden');
+        }
+
+        function closeCorrectionModal() {
+            document.getElementById('modal-correct').classList.add('hidden');
+        }
+
+        function saveCorrection() {
+            const field = document.getElementById('corr-field').value;
+            const action = document.getElementById('corr-action').value || "Manual correction applied by reviewer";
+            const tag = document.getElementById('corr-tag').value;
+
+            const now = new Date();
+            const timestamp = now.toISOString().slice(0, 10) + ' ' + now.toTimeString().slice(0, 5);
+
+            correctionLogs.unshift({
+                timestamp,
+                draft: document.getElementById('review-project-no').textContent,
+                field,
+                action,
+                tag
+            });
+
+            closeCorrectionModal();
+            triggerToast('Correction recorded and saved to audit log.');
+        }
+
+        function renderCorrectionLog() {
+            const filterTag = document.getElementById('filter-route-tag').value;
+            const tbody = document.getElementById('corrections-tbody');
+            tbody.innerHTML = '';
+
+            const filtered = correctionLogs.filter(log => filterTag === 'ALL' || log.tag === filterTag);
+
+            filtered.forEach(log => {
+                const tr = document.createElement('tr');
+                let tagClass = "bg-slate-100 text-slate-700";
+                if (log.tag === 'Drift') tagClass = "bg-amber-100 text-amber-900 border border-amber-300 font-bold";
+                else if (log.tag === 'Content') tagClass = "bg-blue-100 text-blue-800 border border-blue-200";
+
+                tr.className = log.tag === 'Drift' ? "bg-amber-50/40 hover:bg-amber-50" : "hover:bg-slate-50";
+
+                tr.innerHTML = `
+                    <td class="p-3 text-slate-500">${log.timestamp}</td>
+                    <td class="p-3 font-bold text-slate-900">${log.draft}</td>
+                    <td class="p-3 text-slate-800">${log.field}</td>
+                    <td class="p-3 text-slate-700 font-sans">${log.action}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] ${tagClass}">${log.tag}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('stat-corrections-count').textContent = correctionLogs.length;
+        }
+
+        // 6. SCREEN 3: PRECEDENT SEARCH
+        function fillSearch(term) {
+            document.getElementById('precedent-search-input').value = term;
+            executePrecedentSearch();
+        }
+
+        function executePrecedentSearch() {
+            const input = document.getElementById('precedent-search-input').value.toLowerCase();
+            const container = document.getElementById('precedent-results-container');
+            container.innerHTML = '';
+
+            const matches = precedentData.filter(p => {
+                if (!input) return true;
+                return p.title.toLowerCase().includes(input) || p.whyMatched.toLowerCase().includes(input) || p.customer.toLowerCase().includes(input);
+            });
+
+            document.getElementById('search-results-count').textContent = `${matches.length} Comparables Found in Vault`;
+
+            matches.forEach(item => {
+                const card = document.createElement('div');
+                card.className = "bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-2 hover:border-slate-400 transition";
+                card.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="font-mono font-bold text-xs bg-slate-900 text-white px-2 py-0.5 rounded">${item.projNo}</span>
+                                <span class="font-bold text-xs text-slate-900">${item.customer}</span>
+                                <span class="font-mono text-[10px] text-slate-400">Year ${item.year}</span>
+                            </div>
+                            <h4 class="font-bold text-xs text-slate-800 mt-1">${item.title}</h4>
+                        </div>
+                        <button onclick="useAsReference('${item.projNo}')" class="bg-slate-100 hover:bg-slate-950 hover:text-white text-slate-800 font-mono text-[10px] px-2.5 py-1 rounded transition border border-slate-300">
+                            + Use as reference
+                        </button>
+                    </div>
+                    <div class="p-2 bg-slate-50 rounded border border-slate-100 text-[11px] text-slate-600">
+                        <strong class="text-slate-900 font-mono">Why matched:</strong> ${item.whyMatched}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function useAsReference(projNo) {
+            triggerToast(`Attached precedent ${projNo} to current inquiry Übersicht for delta comparison.`);
+        }
+
+        // 7. NEW INQUIRY MODAL
+        function openNewInquiryModal() {
+            document.getElementById('modal-new-inquiry').classList.remove('hidden');
+        }
+
+        function closeNewInquiryModal() {
+            document.getElementById('modal-new-inquiry').classList.add('hidden');
+        }
+
+        function submitNewInquiry() {
+            const projNo = document.getElementById('new-proj-no').value || "A07622999";
+            const customer = document.getElementById('new-proj-customer').value;
+            const machineName = document.getElementById('new-proj-title').value || "Custom Machine Assembly";
+
+            inquiries.unshift({
+                projNo,
+                machineName,
+                customer,
+                stage: "2_Anfrage",
+                confidence: "Low",
+                status: "Awaiting review",
+                assignedTo: "M. Weber"
+            });
+
+            closeNewInquiryModal();
+            renderQueueTable();
+            triggerToast(`Ingested new inquiry ${projNo} into queue.`);
+        }
+
+        // 8. TOAST NOTIFICATIONS
+        function triggerToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').textContent = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3500);
+        }
+
+        function hideToast() {
+            document.getElementById('toast').classList.add('hidden');
+        }
+
+        // INITIALIZATION ON LOAD
+        window.onload = function() {
+            renderQueueTable();
+            renderCorrectionLog();
+        };
+    </script>
+</body>
+</html>
