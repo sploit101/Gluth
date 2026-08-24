@@ -87,6 +87,17 @@ Open **http://localhost:8800**
 If you see less, a dependency is missing — check the `By format` table it
 prints for which handler failed.
 
+## Two copies of the UI — which is which
+
+| File | Live? | Use it for |
+|---|---|---|
+| `pipeline/ui.html` | **yes** | the real thing. Talks to the local API, shows real corpus data. Served at `http://localhost:8800`. |
+| `ai_rfq_engineering_intelligence_platform.html` (repo root) | no | the standalone design prototype with mock data. Opens in a browser with no server, useful for showing the layout only. |
+
+They look nearly identical. If numbers on screen never change and search
+returns the same three results regardless of the query, you are looking at the
+prototype, not the live app.
+
 ## Command-line tools
 
 Each module also runs standalone, which is the fastest way to sanity-check the
