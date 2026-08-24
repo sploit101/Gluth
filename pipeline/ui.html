@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLUTH AI // RFQ Engineering Intelligence Workspace</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        // Gluth brand palette (pulled from the A07591000B concept deck theme)
+                        brand: {
+                            mint: '#4DB8A0',   // primary accent / active
+                            teal: '#008F7B',   // hover / secondary
+                            deep: '#0E161A',   // text on mint
+                            soft: '#E3F2EE',   // mint tint surface
+                        },
+                        slate: {
+                            50: '#f6f8f8',
+                            100: '#eef2f1',
+                            200: '#e0e6e5',
+                            300: '#c6d0cf',
+                            400: '#8a9a9d',
+                            500: '#5f7075',
+                            600: '#4a5b61',
+                            700: '#37474e',
+                            800: '#2c3e48',   // Gluth primary dark
+                            900: '#25353d',
+                            950: '#1b282e',   // Gluth ink (headers, dark surfaces)
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F8FAFC;
+            color: #0F172A;
+            -webkit-font-smoothing: antialiased;
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #F1F5F9; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+        
+        .citation-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 0px 4px;
+            font-size: 10px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            border-radius: 3px;
+            background-color: #E3F2EE;
+            color: #008F7B;
+            border: 1px solid #A9DED2;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            margin-left: 3px;
+            margin-right: 2px;
+        }
+        .citation-chip:hover {
+            background-color: #008F7B;
+            color: #FFFFFF;
+            border-color: #008F7B;
+        }
+        .source-highlight {
+            background-color: #FFF3C4;
+            border-left: 3px solid #4DB8A0;
+            padding: 4px 8px;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+        /* focus rings + selection in brand */
+        body { selection-color: initial; }
+        ::selection { background: #4DB8A0; color: #0E161A; }
+        input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 2px #4DB8A0; border-color: #4DB8A0 !important; }
+        .brand-logo { background: var(--primary); }
+
+        /* ============================================================= */
+        /* shadcn/ui DESIGN SYSTEM  (OKLCH tokens · Gluth teal primary)    */
+        /* ref: ui.shadcn.com/docs/theming                                */
+        /* ============================================================= */
+        :root {
+            --radius: 0.625rem;
+            --background: oklch(0.995 0.002 175);
+            --foreground: oklch(0.23 0.02 200);
+            --card: oklch(1 0 0);
+            --card-foreground: oklch(0.23 0.02 200);
+            --popover: oklch(1 0 0);
+            --popover-foreground: oklch(0.23 0.02 200);
+            --primary: oklch(0.58 0.09 178);
+            --primary-foreground: oklch(0.99 0.01 175);
+            --secondary: oklch(0.968 0.006 180);
+            --secondary-foreground: oklch(0.28 0.03 200);
+            --muted: oklch(0.968 0.006 180);
+            --muted-foreground: oklch(0.53 0.02 200);
+            --accent: oklch(0.96 0.02 178);
+            --accent-foreground: oklch(0.30 0.04 195);
+            --success: oklch(0.62 0.11 175);
+            --warning: oklch(0.72 0.14 85);
+            --destructive: oklch(0.60 0.20 28);
+            --border: oklch(0.92 0.006 195);
+            --input: oklch(0.92 0.006 195);
+            --ring: oklch(0.58 0.09 178);
+            --sidebar: oklch(0.30 0.03 205);
+            --sidebar-foreground: oklch(0.85 0.02 200);
+            --sidebar-muted: oklch(0.62 0.02 205);
+            --sidebar-border: oklch(1 0 0 / 10%);
+        }
+
+        /* ---- base ---- */
+        body {
+            background: var(--background) !important;
+            color: var(--foreground);
+            font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        main { background: transparent !important; padding: 22px 26px !important; }
+        ::selection { background: var(--primary); color: var(--primary-foreground); }
+
+        /* Kill the terminal look: mono → sans except explicit data */
+        .font-mono { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif !important; letter-spacing: 0 !important; }
+        .mono, #source-viewer-body, #source-viewer-body *, .tabular { font-family: 'JetBrains Mono', monospace !important; }
+
+        h1,h2,h3,h4 { color: var(--foreground); letter-spacing: -.01em; font-weight: 600; }
+
+        /* ---- token remap of the utility soup ---- */
+        .bg-white { background: var(--card) !important; }
+        .bg-slate-50, .bg-slate-100 { background: var(--muted) !important; }
+        .border-slate-200, .border-slate-100, .border-slate-300 { border-color: var(--border) !important; }
+        .text-slate-950, .text-slate-900 { color: var(--foreground) !important; }
+        .text-slate-700, .text-slate-800 { color: color-mix(in oklab, var(--foreground) 82%, transparent) !important; }
+        .text-slate-600, .text-slate-500, .text-slate-400, .text-slate-300 { color: var(--muted-foreground) !important; }
+
+        /* ---- radius scale ---- */
+        .rounded-lg { border-radius: var(--radius) !important; }
+        .rounded, .rounded-md { border-radius: calc(var(--radius) - 2px) !important; }
+        .rounded-full { border-radius: 9999px !important; }
+
+        /* ---- shadcn elevation: barely-there ---- */
+        .shadow-2xs, .shadow-xs { box-shadow: 0 1px 2px 0 rgb(16 24 28 / .05) !important; }
+        .shadow-sm { box-shadow: 0 1px 3px 0 rgb(16 24 28 / .07), 0 1px 2px -1px rgb(16 24 28 / .07) !important; }
+        .shadow-xl { box-shadow: 0 10px 30px -12px rgb(16 24 28 / .28) !important; }
+
+        /* ---- cards ---- */
+        .bg-white.rounded-lg, .bg-white.border { border: 1px solid var(--border) !important; }
+
+        /* ---- buttons (shadcn: rounded-md, medium, ring) ---- */
+        button { transition: background-color .15s ease, color .15s ease, box-shadow .15s ease; }
+        .bg-slate-950 { background: var(--primary) !important; color: var(--primary-foreground) !important; box-shadow: 0 1px 2px 0 rgb(16 24 28 / .08); }
+        .bg-slate-950:hover { background: color-mix(in oklab, var(--primary) 90%, black) !important; }
+        .bg-emerald-700, .bg-emerald-800 { background: var(--success) !important; color: var(--primary-foreground) !important; }
+        .bg-emerald-700:hover { background: color-mix(in oklab, var(--success) 90%, black) !important; }
+        .bg-rose-700, .bg-rose-800 { background: var(--destructive) !important; color: #fff !important; }
+        .bg-slate-100 { background: var(--secondary) !important; }
+        .bg-slate-100:hover { background: color-mix(in oklab, var(--secondary) 92%, black) !important; }
+
+        /* ---- focus-visible ring ---- */
+        input:focus-visible, select:focus-visible, textarea:focus-visible,
+        input:focus, select:focus, textarea:focus {
+            outline: none !important;
+            border-color: var(--ring) !important;
+            box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 45%, transparent) !important;
+        }
+        input, select, textarea { background: transparent !important; }
+
+        /* ---- table ---- */
+        thead tr { background: transparent !important; }
+        th { color: var(--muted-foreground) !important; font-weight: 500 !important; text-transform: none !important; letter-spacing: 0 !important; font-family: 'Inter', sans-serif !important; font-size: 11px; }
+        td, th { padding: 12px 16px !important; }
+        tbody tr { border-bottom: 1px solid var(--border); }
+        tbody tr:hover { background: var(--muted) !important; }
+
+        /* ---- badges / pills ---- */
+        .bg-emerald-100 { background: color-mix(in oklab, var(--success) 15%, var(--card)) !important; color: var(--success) !important; border-color: color-mix(in oklab, var(--success) 30%, transparent) !important; }
+        .bg-amber-100, .bg-amber-50 { background: color-mix(in oklab, var(--warning) 14%, var(--card)) !important; color: oklch(0.48 0.12 80) !important; border-color: color-mix(in oklab, var(--warning) 32%, transparent) !important; }
+        .text-amber-700, .text-amber-800, .text-amber-900, .text-amber-950, .text-amber-600 { color: oklch(0.50 0.12 78) !important; }
+        .bg-rose-50 { background: color-mix(in oklab, var(--destructive) 12%, var(--card)) !important; border-color: color-mix(in oklab, var(--destructive) 28%, transparent) !important; }
+        .text-rose-700, .text-rose-600 { color: var(--destructive) !important; }
+        .bg-sky-100 { background: var(--secondary) !important; }
+        .text-sky-700, .text-sky-800 { color: var(--muted-foreground) !important; }
+        .text-emerald-700, .text-emerald-600 { color: var(--success) !important; }
+
+        /* progress / meters flat token colors */
+        .bg-emerald-600, .bg-emerald-500 { background: var(--success) !important; border-radius: 9999px; }
+        .bg-sky-600, .bg-sky-500 { background: var(--muted-foreground) !important; border-radius: 9999px; }
+        .bg-slate-200 { background: var(--muted) !important; }
+
+        /* ============================================================= */
+        /* SIDEBAR                                                        */
+        /* ============================================================= */
+        .sidebar { background: var(--sidebar); border-right: 1px solid var(--sidebar-border); }
+        .side-group { font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--sidebar-muted); padding: 16px 12px 6px; font-weight: 500; }
+        .side-link {
+            width: 100%; display: flex; align-items: center; gap: 11px;
+            padding: 8px 12px; border-radius: calc(var(--radius) - 2px); margin-bottom: 2px;
+            color: var(--sidebar-foreground); font-size: 13px; font-weight: 500; text-align: left;
+            transition: background-color .15s ease, color .15s ease;
+        }
+        .side-link i { width: 16px; text-align: center; font-size: 13px; opacity: .8; }
+        .side-link:hover { background: oklch(1 0 0 / 6%); color: #fff; }
+        .side-link.active { background: var(--primary); color: var(--primary-foreground); font-weight: 500; }
+        .side-link.active i { opacity: 1; }
+        .side-badge { margin-left: auto; background: oklch(1 0 0 / 12%); color: #fff; font-size: 10.5px; font-weight: 600; padding: 1px 8px; border-radius: 9999px; }
+        .side-link.active .side-badge { background: oklch(1 0 0 / 22%); color: #fff; }
+        .sidebar .text-white { color: #fff !important; }
+        .sidebar .text-slate-400 { color: var(--sidebar-muted) !important; }
+
+        /* topbar */
+        .topbar { background: color-mix(in oklab, var(--background) 82%, transparent) !important; backdrop-filter: saturate(180%) blur(8px); -webkit-backdrop-filter: saturate(180%) blur(8px); border-bottom: 1px solid var(--border); }
+
+        /* citation chips → outline badge */
+        .citation-chip { background: color-mix(in oklab, var(--primary) 12%, var(--card)); color: var(--primary); border: 1px solid color-mix(in oklab, var(--primary) 30%, transparent); border-radius: calc(var(--radius) - 4px); box-shadow: none; font-family: 'Inter', sans-serif; }
+        .citation-chip:hover { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+        .source-highlight { background: color-mix(in oklab, var(--warning) 22%, var(--card)); border-left: 3px solid var(--primary); }
+
+        /* banner, source, modals, toast */
+        #review-banner { border-radius: var(--radius) !important; background: color-mix(in oklab, var(--warning) 12%, var(--card)) !important; border-color: color-mix(in oklab, var(--warning) 30%, transparent) !important; }
+        #source-viewer-body { background: var(--muted) !important; }
+        #source-viewer-body > div { box-shadow: 0 1px 3px 0 rgb(16 24 28 / .08) !important; border: 1px solid var(--border) !important; }
+        [id^="modal-"] > div { box-shadow: 0 24px 60px -20px rgb(16 24 28 / .5) !important; border-radius: var(--radius) !important; border: 1px solid var(--border) !important; }
+        [id^="modal-"] { background: oklch(0.23 0.02 200 / .45) !important; backdrop-filter: blur(2px); }
+        #toast { background: var(--foreground) !important; color: var(--background) !important; border: none !important; border-radius: calc(var(--radius) - 2px) !important; box-shadow: 0 16px 40px -12px rgb(16 24 28 / .45) !important; }
+        #toast .fa-circle-check { color: var(--success) !important; }
+
+        /* KPI accent rail */
+        #screen-dashboard .grid > .bg-white { position: relative; overflow: hidden; }
+        #screen-dashboard .grid > .bg-white::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background: var(--primary); }
+
+        /* screen fade */
+        .screen-view:not(.hidden) { animation: viewIn .28s ease; }
+        @keyframes viewIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform:none; } }
+        @media (prefers-reduced-motion: reduce) { .screen-view:not(.hidden){ animation:none; } *{ transition:none !important; } }
+
+        /* scrollbars */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px; }
+        .sidebar nav::-webkit-scrollbar-thumb { background: oklch(1 0 0 / 14%); }
+    </style>
+</head>
+<body class="h-full flex overflow-hidden text-xs text-slate-900">
+
+    <!-- ===================== SIDEBAR ===================== -->
+    <aside class="sidebar w-60 flex-none flex flex-col text-slate-300">
+        <div class="px-5 py-5 border-b border-white/10">
+            <svg viewBox="0 0 235 36" width="152" role="img" aria-label="Gluth Systemtechnik" style="height:auto;display:block">
+                <g fill="#ffffff">
+                    <path d="M153.96,15.25l.76-.44c.32,1.07,1.16,1.75,2.55,1.75s2.09-.65,2.09-1.6c0-1.03-.87-1.36-2.18-1.79-1.45-.48-2.84-.86-2.84-2.5s1.26-2.44,2.73-2.44,2.47.86,2.93,1.91l-.75.42c-.33-.8-1.02-1.47-2.18-1.47-1.07,0-1.84.56-1.84,1.53s.76,1.27,1.96,1.66c1.61.53,3.06.99,3.06,2.64,0,1.52-1.22,2.49-2.99,2.49-1.64,0-2.84-.82-3.3-2.16Z"/>
+                    <path d="M166.87,13.63v3.64h-.89v-3.67l-3.2-5.21h1l2.65,4.35,2.64-4.35h1l-3.22,5.24Z"/>
+                    <path d="M172.49,15.25l.76-.44c.32,1.07,1.16,1.75,2.55,1.75s2.09-.65,2.09-1.6c0-1.03-.87-1.36-2.18-1.79-1.45-.48-2.84-.86-2.84-2.5s1.26-2.44,2.73-2.44,2.47.86,2.93,1.91l-.75.42c-.33-.8-1.02-1.47-2.18-1.47-1.07,0-1.84.56-1.84,1.53s.76,1.27,1.96,1.66c1.61.53,3.06.99,3.06,2.64,0,1.52-1.22,2.49-2.99,2.49-1.64,0-2.84-.82-3.3-2.16Z"/>
+                    <path d="M187.85,9.22h-2.73v8.04h-.89v-8.04h-2.73v-.84h6.34v.84Z"/>
+                    <path d="M196.6,16.43v.84h-5.2v-8.88h5.14v.84h-4.25v3.15h3.93v.84h-3.93v3.22h4.31Z"/>
+                    <path d="M208.52,17.27h-.89v-7.53l-3.11,5.2h-.13l-3.11-5.2v7.53h-.89v-8.88h1.1l2.95,4.95,2.95-4.95h1.1v8.88h0Z"/>
+                    <path d="M160.04,24.45h-2.73v8.04h-.89v-8.04h-2.73v-.84h6.34v.84Z"/>
+                    <path d="M168.8,31.65v.84h-5.2v-8.88h5.14v.84h-4.25v3.15h3.93v.84h-3.93v3.22h4.31Z"/>
+                    <path d="M172.03,28.05c0-2.54,1.93-4.59,4.65-4.59,1.65,0,3.11.86,3.84,2.18l-.79.46c-.55-1.07-1.72-1.78-3.06-1.78-2.25,0-3.77,1.66-3.77,3.73s1.52,3.73,3.77,3.73c1.33,0,2.51-.71,3.06-1.78l.79.44c-.72,1.32-2.18,2.2-3.84,2.2-2.73,0-4.65-2.05-4.65-4.59Z"/>
+                    <path d="M190.86,23.61v8.88h-.89v-4.15h-4.82v4.15h-.89v-8.88h.89v3.9h4.82v-3.9h.89Z"/>
+                    <path d="M201.77,23.61v8.88h-.76l-4.95-7.23v7.23h-.89v-8.88h.76l4.95,7.23v-7.23s.89,0,.89,0Z"/>
+                    <path d="M206.97,23.61v8.88h-.89v-8.88h.89Z"/>
+                    <path d="M216.33,32.49l-4.16-4.3v4.3h-.89v-8.88h.89v4.06l4.03-4.06h1.17l-4.26,4.31,4.39,4.57h-1.17Z"/>
+                    <path d="M38.45,3.16h14.45v29.3h-14.45V3.16Z"/>
+                    <path d="M89.81,24.79V8.37l7.31-5.12h7.14v5.12h4.67v8.84h-4.67v6.01c0,.27.22.45.54.45h4.13v8.8h-9.78c-7.72,0-9.33-2.56-9.33-7.67Z"/>
+                    <path d="M72.73,8.37v14.31c0,.42-.26.77-.63.92-.05.02-.1.04-.15.05-.03,0-.07.01-.1.02-.01,0-.02,0-.03,0h-.02s-.05,0-.08,0h-.75s-.05,0-.08,0h-.1c-.24,0-.42-.1-.5-.27-.19-.18-.31-.44-.31-.73v-14.31h-14.18v18.72c0,3.5,2.24,5.03,6.46,5.39,6.06.49,12.12.49,18.18,0,4.22-.36,6.46-1.89,6.46-5.39V8.37h-14.18Z"/>
+                    <path d="M134.94,8.37h-8.66V3.16h-14.45v29.3h14.18v-15.5h1.75c.55,0,1,.45,1,1v14.5h14.18V15.59c0-5.7-1.89-7.22-7.99-7.22Z"/>
+                    <path d="M19.21,14.3v9.37h-1.86c-.49,0-.88-.39-.88-.88v-10.55c0-.38.31-.69.69-.69h18.4V3.16H9.25C3.2,3.16.77,5.45.37,9.35-.12,14.65-.12,20.8.37,26.27c.31,3.9,2.38,6.19,8.84,6.19h26.34V14.3h-16.34Z"/>
+                </g>
+                <rect fill="#4ab7a0" x="226.12" y="23.6" width="8.88" height="8.88"/>
+            </svg>
+            <div class="text-[10px] text-slate-400 mt-2.5 tracking-wide">RFQ Intelligence · Use Case 0</div>
+        </div>
+
+        <nav class="flex-1 overflow-y-auto p-3">
+            <div class="side-group">Workflow</div>
+            <button onclick="switchScreen('screen-queue')" id="nav-screen-queue" class="side-link active">
+                <i class="fa-solid fa-list-check"></i><span>Queue</span>
+            </button>
+            <button onclick="switchScreen('screen-review')" id="nav-screen-review" class="side-link">
+                <i class="fa-solid fa-file-signature"></i><span>Review</span>
+                <span id="review-badge" class="side-badge">3</span>
+            </button>
+            <button onclick="switchScreen('screen-search')" id="nav-screen-search" class="side-link">
+                <i class="fa-solid fa-magnifying-glass"></i><span>Precedent Search</span>
+            </button>
+
+            <div class="side-group">Governance</div>
+            <button onclick="switchScreen('screen-drift')" id="nav-screen-drift" class="side-link">
+                <i class="fa-solid fa-code-compare"></i><span>Version Drift</span>
+                <span id="drift-badge" class="side-badge">0</span>
+            </button>
+            <button onclick="switchScreen('screen-corrections')" id="nav-screen-corrections" class="side-link">
+                <i class="fa-solid fa-clock-rotate-left"></i><span>Correction Log</span>
+            </button>
+            <button onclick="switchScreen('screen-dashboard')" id="nav-screen-dashboard" class="side-link">
+                <i class="fa-solid fa-chart-line"></i><span>Dashboard</span>
+            </button>
+            <button onclick="switchScreen('screen-triage')" id="nav-screen-triage" class="side-link">
+                <i class="fa-solid fa-sliders"></i><span>Triage &amp; Rules</span>
+            </button>
+        </nav>
+
+        <div class="px-3 py-3 border-t border-white/10 flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-bold text-white text-xs">MW</div>
+            <div class="leading-tight">
+                <div class="text-white text-xs font-semibold">M. Weber</div>
+                <div class="text-[10px] text-slate-400">BMW Lead Specialist</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ===================== CONTENT COLUMN ===================== -->
+    <div class="flex-1 flex flex-col min-w-0">
+        <header class="topbar h-14 flex-none px-7 flex items-center justify-between">
+            <div>
+                <div class="text-[11px] text-slate-400 font-medium">Use Case 0 · Technischer Vertrieb</div>
+                <h1 id="page-title" class="text-base font-bold text-slate-900 tracking-tight leading-tight">Inquiry Queue</h1>
+            </div>
+            <div class="flex items-center gap-2 text-[11px] text-brand-teal bg-brand-soft px-3 py-1.5 rounded-lg font-medium">
+                <span class="w-2 h-2 rounded-full bg-brand-mint"></span> M365 Tenant · read-only
+            </div>
+        </header>
+
+    <!-- Global Toast Alert Banner -->
+    <div id="toast" class="hidden fixed bottom-4 right-4 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-lg border border-slate-800 shadow-xl flex items-center space-x-3 text-xs font-mono animate-bounce">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toast-msg">Action completed successfully.</span>
+        <button onclick="hideToast()" class="text-slate-400 hover:text-white ml-2">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow overflow-y-auto bg-slate-100 p-4">
+
+        <!-- ========================================================================= -->
+        <!-- SCREEN 1 — QUEUE (The Landing Screen) -->
+        <!-- ========================================================================= -->
+        <section id="screen-queue" class="screen-view space-y-4">
+            
+            <!-- Filter Bar & Control Ribbon -->
+            <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-[11px] font-medium text-slate-500">Showing</span>
+                        <span class="font-mono text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-600" id="queue-count-badge">5 inquiries</span>
+                    </div>
+
+                    <button onclick="openNewInquiryModal()" class="bg-slate-950 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium text-xs transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-plus text-xs"></i>
+                        <span>New Inquiry</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-2 border-t border-slate-100">
+                    <!-- Customer Filter -->
+                    <div class="sm:col-span-3">
+                        <label class="block text-[10px] font-mono text-slate-500 uppercase mb-0.5">Filter by Customer</label>
+                        <select id="filter-customer" onchange="renderQueueTable()" class="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-slate-900">
+                            <option value="ALL">All Customers</option>
+                            <option value="BMW Group">BMW Group</option>
+                            <option value="Bosch GmbH">Bosch GmbH</option>
+                            <option value="Draexlmaier">Dräxlmaier</option>
+                            <option value="BMG">BMG / ArGe</option>
+                        </select>
+                    </div>
+
+                    <!-- Status Filter -->
+                    <div class="sm:col-span-3">
+                        <label class="block text-[10px] font-mono text-slate-500 uppercase mb-0.5">Filter by Status</label>
+                        <select id="filter-status" onchange="renderQueueTable()" class="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-slate-900">
+                            <option value="ALL">All Statuses</option>
+                            <option value="New">New</option>
+                            <option value="Awaiting review">Awaiting Review</option>
+                            <option value="Full review">Full Review Needed</option>
+                            <option value="Approved">Approved</option>
+                            <option value="Won">Won</option>
+                            <option value="Lost">Lost</option>
+                        </select>
+                    </div>
+
+                    <!-- Assigned to me toggle -->
+                    <div class="sm:col-span-3 flex items-end">
+                        <label class="flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded px-3 py-1.5 w-full cursor-pointer hover:bg-slate-100">
+                            <input type="checkbox" id="filter-assigned" onchange="renderQueueTable()" class="rounded text-slate-900 focus:ring-slate-900">
+                            <span class="font-medium text-xs text-slate-700">Assigned to Me (M. Weber)</span>
+                        </label>
+                    </div>
+
+                    <!-- Sort strategy info -->
+                    <div class="sm:col-span-3 flex items-end justify-end">
+                        <div class="text-[10px] text-slate-500 flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded w-full">
+                            <i class="fa-solid fa-arrow-down-short-wide text-slate-400"></i>
+                            <span>Low confidence &amp; full review shown first</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Queue Gallery Table -->
+            <div class="bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-200 font-mono text-[10px] text-slate-500 uppercase tracking-wider">
+                                <th class="p-3">Project No / Customer</th>
+                                <th class="p-3">Machine / Scope Name</th>
+                                <th class="p-3">Stage</th>
+                                <th class="p-3">Corpus</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queue-tbody" class="divide-y divide-slate-200 text-xs">
+                            <!-- Inquiries rendered via JS script below -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- SCREEN 2 — REVIEW WORKSPACE (Core Screen) -->
+        <!-- ========================================================================= -->
+        <section id="screen-review" class="screen-view hidden space-y-3">
+            
+            <!-- Top Confidence & Project Banner -->
+            <div id="review-banner" class="p-3 rounded-lg border flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs bg-amber-50 border-amber-200 text-amber-950">
+                <div class="flex items-start space-x-3">
+                    <div class="p-2 bg-amber-100 rounded text-amber-800 text-sm font-bold flex-none">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <span class="font-mono font-bold text-xs" id="review-project-no">—</span>
+                            <span class="font-bold text-xs" id="review-machine-title"></span>
+                            <span id="review-confidence-pill" class="font-mono text-[10px] bg-amber-200 text-amber-900 border border-amber-300 font-bold px-2 py-0.5 rounded">LOW CONFIDENCE</span>
+                        </div>
+                        <p class="text-[11px] text-amber-800 mt-0.5" id="review-confidence-desc">
+                            No exact single-project precedent found. Citations cross-referenced from Bosch Norm N2580 v4.0 and BMW GS 95024. Full manual engineering verification required.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-2 flex-none">
+                    <button onclick="openCorrectionModal()" class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 px-3 py-1.5 rounded font-medium text-xs transition flex items-center space-x-1 shadow-2xs">
+                        <i class="fa-solid fa-pen-to-square text-amber-600"></i>
+                        <span>Correct...</span>
+                    </button>
+                    <button onclick="approveDraft()" class="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded font-bold text-xs transition flex items-center space-x-1.5 shadow-2xs">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Approve Draft</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Two-Pane Split Layout -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 h-[calc(100vh-185px)] min-h-[550px]">
+                
+                <!-- Left Pane: The Draft Outputs -->
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg flex flex-col overflow-hidden shadow-2xs">
+                    <!-- Tab Selector Header -->
+                    <div class="bg-slate-50 border-b border-slate-200 px-3 py-2 flex items-center justify-between">
+                        <div class="flex space-x-1 text-[11px]">
+                            <button onclick="switchDraftTab('summary')" data-kind="summary" class="draft-tab-btn px-3 py-1 rounded font-bold bg-white border border-slate-300 text-slate-900 shadow-2xs">1. Summary</button>
+                            <button onclick="switchDraftTab('checkliste')" data-kind="checkliste" class="draft-tab-btn px-3 py-1 rounded font-medium text-slate-600 hover:text-slate-900">2. Checkliste</button>
+                            <button onclick="switchDraftTab('uebersicht')" data-kind="uebersicht" class="draft-tab-btn px-3 py-1 rounded font-medium text-slate-600 hover:text-slate-900">3. Übersicht</button>
+                        </div>
+                        <span id="citation-count" class="text-[10px] text-slate-400">—</span>
+                    </div>
+
+                    <!-- Live extractive draft -->
+                    <div id="draft-pane" class="p-4 flex-grow overflow-y-auto">
+                        <div class="p-6 text-slate-400 text-xs">Select an inquiry from the Queue.</div>
+                    </div>
+                </div>
+
+                <!-- Right Pane: The Source Viewer -->
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg flex flex-col overflow-hidden shadow-2xs">
+                    <!-- Source Viewer Toolbar Header -->
+                    <div class="bg-slate-50 border-b border-slate-200 px-3 py-2 flex items-center justify-between font-mono text-[11px]">
+                        <div class="flex items-center space-x-2 text-slate-800">
+                            <i class="fa-solid fa-file-pdf text-rose-600"></i>
+                            <span id="source-doc-name" class="font-bold">No source selected</span>
+                        </div>
+                        <div class="flex items-center space-x-2 text-slate-500">
+                            <span id="source-page-indicator" class="bg-white border px-2 py-0.5 rounded text-slate-700">—</span>
+                            <span class="text-xs">|</span>
+                            <span>Scale 100%</span>
+                        </div>
+                    </div>
+
+                    <!-- Source Viewer Document Content Mockup -->
+                    <div class="p-4 flex-grow overflow-y-auto bg-slate-200/50 font-mono text-[11px] leading-relaxed space-y-3" id="source-viewer-body">
+                        <div class="p-6 text-slate-400 text-xs">Click a citation chip in the draft to open its source here.</div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- SCREEN 3 — PRECEDENT SEARCH (The Standalone Feature) -->
+        <!-- ========================================================================= -->
+        <section id="screen-search" class="screen-view hidden space-y-4 max-w-5xl mx-auto">
+            
+            <div class="bg-white p-6 rounded-lg border border-slate-200 shadow-2xs space-y-4">
+                <div>
+                    <h2 class="font-bold text-base text-slate-950">Precedent Search & Historical Project Vault</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                        Answer "Did we ever build something like this?" in plain language across 15+ years of GLUTH engineering offers and R-Numbers.
+                    </p>
+                </div>
+
+                <!-- Single Prominent Search Box -->
+                <div class="relative">
+                    <i class="fa-solid fa-wand-magic-sparkles absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                    <input type="text" id="precedent-search-input" onkeyup="executePrecedentSearch()" placeholder="Beschreibe die Maschine... e.g. Schläuche ablängen, fetten, beidseitig Fittings crimpen" class="w-full pl-10 pr-24 py-3 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-950 font-medium">
+                    <button onclick="executePrecedentSearch()" class="absolute right-2 top-2 bg-slate-950 text-white text-xs px-3 py-1.5 rounded font-medium hover:bg-slate-800">
+                        Search
+                    </button>
+                </div>
+
+                <!-- Quick Sample Query Chips -->
+                <div class="flex items-center space-x-2 font-mono text-[10px]">
+                    <span class="text-slate-400">Quick samples:</span>
+                    <button onclick="fillSearch('Schläuche ablängen, fetten und crimpen')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">Hose crimping</button>
+                    <button onclick="fillSearch('Bosch Ventilblock Entgraten und Spülen')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">Valve block deburring</button>
+                    <button onclick="fillSearch('Dichtheitsprüfung End-of-Line Tester')" class="bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-700">EOL Leak tester</button>
+                </div>
+            </div>
+
+            <!-- Search Results Section (Multiple Comparables) -->
+            <div class="space-y-3">
+                <div class="flex justify-between items-center text-xs font-mono text-slate-500">
+                    <span id="search-results-count">Type a machine description to search the corpus</span>
+                    <span id="index-status" class="text-[10px] text-slate-400">connecting to local index…</span>
+                    <span>Order by relevance</span>
+                </div>
+
+                <div id="precedent-results-container" class="space-y-3">
+                    <!-- Cards injected via JS script below -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- SCREEN 4 — CORRECTION LOG (Drift Early Warning) -->
+        <!-- ========================================================================= -->
+        <section id="screen-drift" class="screen-view hidden space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] text-slate-500 uppercase">Multiple versions on file</div>
+                    <div class="text-xl font-bold text-rose-700 mt-1" id="drift-multi">0</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">which one was the offer written against?</div>
+                </div>
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] text-slate-500 uppercase">Stale references</div>
+                    <div class="text-xl font-bold text-amber-700 mt-1" id="drift-stale">0</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">cites an older version than we hold</div>
+                </div>
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] text-slate-500 uppercase">Cited but not held</div>
+                    <div class="text-xl font-bold text-slate-900 mt-1" id="drift-notheld">0</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">no local copy — changes go unnoticed</div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-lg shadow-2xs">
+                <div class="p-3 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                    <div>
+                        <div class="font-bold text-xs text-slate-900">REFERENCE &amp; VERSION DRIFT</div>
+                        <div class="text-[10px] text-slate-500 mt-0.5">Deterministic — versions parsed from filenames and explicit in-document statements. No model.</div>
+                    </div>
+                    <select id="filter-drift-kind" onchange="renderDrift()" class="bg-white border border-slate-200 rounded px-2 py-1 text-xs">
+                        <option value="">All findings</option>
+                        <option value="MULTIPLE_VERSIONS">Multiple versions</option>
+                        <option value="STALE_REFERENCE">Stale reference</option>
+                        <option value="NOT_HELD">Not held</option>
+                    </select>
+                </div>
+                <div id="drift-list" class="p-3 space-y-2"></div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-lg shadow-2xs">
+                <div class="p-3 border-b border-slate-200 bg-slate-50">
+                    <div class="font-bold text-xs text-slate-900">WHAT CHANGED BETWEEN TWO VERSIONS</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">Numeric filter on — dimensions, tolerances, cycle times. The changes that cost money.</div>
+                </div>
+                <div class="p-3 space-y-3">
+                    <select id="specdiff-pair" onchange="renderSpecDiff()" class="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs"></select>
+                    <div id="specdiff-result" class="space-y-2"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="screen-corrections" class="screen-view hidden space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] text-slate-500 uppercase">Corrections logged</div>
+                    <div class="text-xl font-bold text-slate-950 mt-1" id="stat-corrections-count">0</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">written to SQLite</div>
+                </div>
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] text-slate-500 uppercase">Most-corrected field</div>
+                    <div class="text-xs font-bold text-amber-700 mt-1" id="stat-top-field">—</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5" id="stat-top-field-sub">no data yet</div>
+                </div>
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] text-slate-500 uppercase">Drift-tagged</div>
+                    <div class="text-xl font-bold text-rose-700 mt-1" id="stat-drift-count">0</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">knowledge-base staleness signal</div>
+                </div>
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+                    <div class="text-[10px] text-slate-500 uppercase">Review activity</div>
+                    <div class="text-xs font-bold text-slate-900 mt-1" id="stat-reviews">0 approved / 0 reviews</div>
+                    <div class="text-[10px] text-slate-500 mt-0.5">this workspace</div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+                <div class="p-3 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                    <div class="font-bold text-xs text-slate-900">HUMAN FEEDBACK &amp; CORRECTION AUDIT LOG</div>
+                    <select id="filter-route-tag" onchange="renderCorrectionLog()" class="bg-white border border-slate-200 rounded px-2 py-1 text-xs">
+                        <option value="ALL">All route tags</option>
+                        <option value="Drift">Drift (KB stale)</option>
+                        <option value="Content">Content fix</option>
+                        <option value="OK">OK / minor</option>
+                    </select>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead><tr class="border-b border-slate-200 text-[10px] text-slate-500 uppercase">
+                            <th class="p-3">Timestamp</th><th class="p-3">Project / Artifact</th>
+                            <th class="p-3">Field</th><th class="p-3">Reviewer action</th><th class="p-3">Route tag</th>
+                        </tr></thead>
+                        <tbody id="corrections-tbody" class="divide-y divide-slate-200 text-xs"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="screen-dashboard" class="screen-view hidden space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2">
+                    <div class="flex justify-between items-start text-[10px] text-slate-500">
+                        <span>CORPUS EXTRACTION RATE</span><span class="text-emerald-700 font-bold">measured</span>
+                    </div>
+                    <div class="text-2xl font-bold text-slate-950" id="kpi-extract">—</div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div id="kpi-extract-bar" class="bg-emerald-600 h-full" style="width:0%"></div></div>
+                    <div class="text-[10px] text-slate-500" id="kpi-extract-sub">—</div>
+                </div>
+                <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2">
+                    <div class="flex justify-between items-start text-[10px] text-slate-500">
+                        <span>CLAIMS CARRYING A SOURCE</span><span class="text-emerald-700 font-bold">Target 100%</span>
+                    </div>
+                    <div class="text-2xl font-bold text-slate-950" id="kpi-citation">—</div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div id="kpi-citation-bar" class="bg-emerald-600 h-full" style="width:0%"></div></div>
+                    <div class="text-[10px] text-slate-500">extractive — nothing generated</div>
+                </div>
+                <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2">
+                    <div class="flex justify-between items-start text-[10px] text-slate-500"><span>INDEXED CHUNKS</span></div>
+                    <div class="text-2xl font-bold text-slate-950" id="kpi-corpus">—</div>
+                    <div class="text-[10px] text-slate-500" id="kpi-corpus-sub">—</div>
+                </div>
+                <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2">
+                    <div class="flex justify-between items-start text-[10px] text-slate-500"><span>FILES NEEDING OCR</span><span class="text-amber-700 font-bold">backlog</span></div>
+                    <div class="text-2xl font-bold text-slate-950" id="kpi-ocr">—</div>
+                    <div class="text-[10px] text-slate-500" id="kpi-ocr-sub">—</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-3">
+                    <h3 class="font-bold text-xs uppercase text-slate-950">Draft confidence mix</h3>
+                    <div id="confidence-mix" class="space-y-2"></div>
+                    <div class="text-[10px] text-slate-400 pt-1">Confidence is a retrieval property (item count + citation rate), not a model opinion.</div>
+                </div>
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-3">
+                    <h3 class="font-bold text-xs uppercase text-slate-950">Extraction coverage by format</h3>
+                    <div id="format-coverage" class="space-y-1.5"></div>
+                    <div class="text-[10px] text-slate-500 pt-2 border-t border-slate-100" id="review-throughput">—</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="screen-triage" class="screen-view hidden space-y-4">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-4">
+                    <div class="border-b border-slate-200 pb-2">
+                        <h3 class="font-bold text-xs uppercase text-slate-950">Bid / No-Bid decision matrix</h3>
+                        <div class="text-[10px] text-slate-500 mt-1">Human judgement. The system records it; it never makes it.</div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-slate-500 uppercase mb-1">Inquiry</label>
+                        <select id="triage-project" class="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs"></select>
+                    </div>
+                    <div class="space-y-2 text-xs">
+                        <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded cursor-pointer">
+                            <input type="checkbox" class="triage-crit" data-label="Fits plant footprint" checked><span>Machine fits standard plant footprint and clearance</span></label>
+                        <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded cursor-pointer">
+                            <input type="checkbox" class="triage-crit" data-label="Budget intent verified" checked><span>Customer has verified budget intent (not a pricing check)</span></label>
+                        <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded cursor-pointer">
+                            <input type="checkbox" class="triage-crit" data-label="Know-how aligns" checked><span>Assembly know-how aligns with company expertise</span></label>
+                        <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded cursor-pointer">
+                            <input type="checkbox" class="triage-crit" data-label="Engineer capacity"><span>Assigned engineer capacity available next 2 weeks</span></label>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-slate-500 uppercase mb-1">Assign to</label>
+                        <select id="triage-assign" class="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs">
+                            <option>M. Weber</option><option>K. Schmidt</option><option>H. Becker</option><option>Admin triage</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-2 pt-1">
+                        <button onclick="submitDecision('BID')" class="w-1/2 bg-emerald-700 text-white text-xs py-2 rounded font-bold">BID (GO)</button>
+                        <button onclick="submitDecision('NO-BID')" class="w-1/2 bg-rose-700 text-white text-xs py-2 rounded font-bold">NO-BID</button>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-6 bg-white border border-slate-200 rounded-lg shadow-2xs overflow-hidden">
+                    <div class="p-3 border-b border-slate-200 bg-slate-50">
+                        <h3 class="font-bold text-xs uppercase text-slate-950">Customer routing &amp; decisions</h3>
+                        <div class="text-[10px] text-slate-500 mt-1">Routing derived from customer ownership; decisions persisted.</div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead><tr class="border-b border-slate-200 text-[10px] text-slate-500 uppercase">
+                                <th class="p-3">Customer</th><th class="p-3">Owner</th><th class="p-3">Project</th><th class="p-3">Decision</th>
+                            </tr></thead>
+                            <tbody id="routing-tbody" class="divide-y divide-slate-200 text-xs"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+    </div><!-- /content column -->
+
+    <!-- ========================================================================= -->
+    <!-- MODAL 1: CORRECT FORM MODAL (One-Click Correction Log Writing) -->
+    <!-- ========================================================================= -->
+    <div id="modal-correct" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg border border-slate-200 max-w-md w-full p-4 shadow-xl space-y-3">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-xs uppercase text-slate-950">Record correction · <span id="corr-project" class="text-brand-teal">—</span></h3>
+                <button onclick="closeCorrectionModal()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Target Field / Section</label>
+                    <input type="text" id="corr-field" value="Norm section reference" class="w-full bg-slate-50 border rounded p-1.5 font-mono text-xs">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">What You Corrected / Notes</label>
+                    <textarea id="corr-action" rows="2" class="w-full bg-slate-50 border rounded p-1.5 text-xs" placeholder="e.g. Draft cited a superseded norm revision — corrected to the current version and re-linked to source"></textarea>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Route Tag (Signal Pattern)</label>
+                    <select id="corr-tag" class="w-full bg-slate-50 border rounded p-1.5 text-xs font-mono font-bold">
+                        <option value="Drift">Drift (KB or norm stale)</option>
+                        <option value="Content">Content Fix (Missing spec detail)</option>
+                        <option value="OK">OK (Minor formatting)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex space-x-2 pt-2 border-t">
+                <button onclick="closeCorrectionModal()" class="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded font-medium text-xs">
+                    Cancel
+                </button>
+                <button onclick="saveCorrection()" class="w-1/2 bg-slate-950 hover:bg-slate-800 text-white py-1.5 rounded font-bold text-xs">
+                    Save Correction Log
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: NEW INQUIRY CREATION MODAL -->
+    <div id="modal-new-inquiry" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg border border-slate-200 max-w-md w-full p-4 shadow-xl space-y-3">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-xs font-mono uppercase text-slate-950">+ Ingest New Inquiry</h3>
+                <button onclick="closeNewInquiryModal()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Project Number</label>
+                    <input type="text" id="new-proj-no" value="A07622004" class="w-full bg-slate-50 border rounded p-1.5 font-mono text-xs">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Customer Name</label>
+                    <select id="new-proj-customer" class="w-full bg-slate-50 border rounded p-1.5 text-xs">
+                        <option value="BMW Group">BMW Group</option>
+                        <option value="Bosch GmbH">Bosch GmbH</option>
+                        <option value="Draexlmaier">Dräxlmaier</option>
+                            <option value="BMG">BMG / ArGe</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-mono text-slate-500 uppercase mb-1">Machine / Scope Title</label>
+                    <input type="text" id="new-proj-title" placeholder="e.g. Laser Hose Marking Station" class="w-full bg-slate-50 border rounded p-1.5 text-xs">
+                </div>
+            </div>
+
+            <div class="flex space-x-2 pt-2 border-t">
+                <button onclick="closeNewInquiryModal()" class="w-1/2 bg-slate-100 text-slate-700 py-1.5 rounded font-medium text-xs">
+                    Cancel
+                </button>
+                <button onclick="submitNewInquiry()" class="w-1/2 bg-slate-950 text-white py-1.5 rounded font-bold text-xs">
+                    Ingest Inquiry
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- APPLICATION STATE & LOGIC -->
+    <!-- ========================================================================= -->
+    <script>
+        /* =====================================================================
+           LIVE APPLICATION — every screen reads the local retrieval API.
+           There is no LLM anywhere in this path. All content is either
+           extracted verbatim from the corpus or computed from it.
+           ===================================================================== */
+        const API = 'http://127.0.0.1:8800';
+
+        let inquiries = [];
+        let currentProject = null;
+        let currentArtifact = 'summary';
+        let currentDoc = null;
+        let searchTimer = null;
+
+        const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+            m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+        async function api(path, opts) {
+            const r = await fetch(API + path, opts);
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }
+
+        function apiDown(container, err) {
+            container.innerHTML = `<div class="bg-white border rounded-lg p-5 text-slate-600">
+                <div class="font-semibold text-slate-900 mb-1">Local API not reachable</div>
+                <div class="text-[11px] mb-2">${esc(err && err.message || '')}</div>
+                <code class="text-[11px] block bg-slate-50 p-2 rounded border">cd pipeline &amp;&amp; .venv/bin/python -m uvicorn serve:app --port 8800</code>
+            </div>`;
+        }
+
+        /* ---------------------------------------------------------- NAVIGATION */
+        const PAGE_TITLES = {
+            'screen-queue': 'Inquiry Queue',
+            'screen-review': 'Review Workspace',
+            'screen-search': 'Precedent Search',
+            'screen-drift': 'Reference & Version Drift',
+            'screen-corrections': 'Correction Log',
+            'screen-dashboard': 'Performance Dashboard',
+            'screen-triage': 'Triage & Routing Rules'
+        };
+
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen-view').forEach(s => s.classList.add('hidden'));
+            const target = document.getElementById(screenId);
+            if (target) target.classList.remove('hidden');
+            document.querySelectorAll('.side-link').forEach(b => b.classList.remove('active'));
+            const btn = document.getElementById('nav-' + screenId);
+            if (btn) btn.classList.add('active');
+            const pt = document.getElementById('page-title');
+            if (pt) pt.textContent = PAGE_TITLES[screenId] || '';
+
+            if (screenId === 'screen-drift') renderDrift();
+            if (screenId === 'screen-corrections') renderCorrectionLog();
+            if (screenId === 'screen-dashboard') renderDashboard();
+            if (screenId === 'screen-triage') renderTriage();
+            if (screenId === 'screen-review' && !currentDoc) loadReview(currentProject);
+        }
+
+        /* --------------------------------------------------------------- QUEUE */
+        async function loadInquiries() {
+            try {
+                const d = await api('/api/inquiries');
+                inquiries = d.inquiries;
+                if (!currentProject && inquiries.length) currentProject = inquiries[0].project_no;
+                renderQueueTable();
+                populateFilters();
+            } catch (e) {
+                apiDown(document.getElementById('queue-tbody').parentElement.parentElement, e);
+            }
+        }
+
+        function populateFilters() {
+            const sel = document.getElementById('filter-customer');
+            if (!sel || sel.dataset.filled) return;
+            const customers = [...new Set(inquiries.map(i => i.customer).filter(Boolean))];
+            sel.innerHTML = '<option value="ALL">All Customers</option>' +
+                customers.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+            sel.dataset.filled = '1';
+        }
+
+        const STATUS_STYLE = {
+            'Won': 'bg-emerald-100 text-emerald-800 border-emerald-300',
+            'Approved': 'bg-emerald-100 text-emerald-800 border-emerald-300',
+            'Awaiting review': 'bg-amber-100 text-amber-900 border-amber-300',
+            'Full review': 'bg-rose-50 text-rose-700 border-rose-200',
+            'New': 'bg-slate-100 text-slate-700 border-slate-200'
+        };
+
+        function renderQueueTable() {
+            const cust = document.getElementById('filter-customer').value;
+            const stat = document.getElementById('filter-status').value;
+            const mine = document.getElementById('filter-assigned').checked;
+
+            let rows = inquiries.filter(i =>
+                (cust === 'ALL' || i.customer === cust) &&
+                (stat === 'ALL' || i.status === stat) &&
+                (!mine || i.assigned_to === 'M. Weber'));
+
+            const rank = i => (i.status === 'Awaiting review' || i.status === 'Full review') ? 0 : 1;
+            rows.sort((a, b) => rank(a) - rank(b) || a.project_no.localeCompare(b.project_no));
+
+            const tb = document.getElementById('queue-tbody');
+            tb.innerHTML = rows.map(i => `
+                <tr class="hover:bg-slate-50 cursor-pointer transition" onclick="openInquiryInReview('${esc(i.project_no)}')">
+                    <td class="p-3">
+                        <div class="font-bold text-slate-950">${esc(i.project_no)}</div>
+                        <div class="text-[11px] text-slate-500">${esc(i.customer || '—')}</div>
+                    </td>
+                    <td class="p-3">
+                        <div class="font-semibold text-slate-900">${esc(i.project_name || '—')}</div>
+                        <div class="text-[10px] text-slate-500">Assigned: ${esc(i.assigned_to)}</div>
+                    </td>
+                    <td class="p-3 text-[11px] text-slate-600">${esc(i.stage)}</td>
+                    <td class="p-3 text-[11px] text-slate-600">${i.doc_count} docs · ${i.chunk_count.toLocaleString()} chunks</td>
+                    <td class="p-3"><span class="text-[10px] px-2 py-0.5 rounded border ${STATUS_STYLE[i.status] || 'bg-slate-100 border-slate-200'}">${esc(i.status)}</span></td>
+                    <td class="p-3 text-right"><span class="text-slate-400 hover:text-slate-950 text-xs">Review →</span></td>
+                </tr>`).join('') ||
+                `<tr><td colspan="6" class="p-6 text-center text-slate-400">No inquiries match these filters.</td></tr>`;
+
+            document.getElementById('queue-count-badge').textContent = `${rows.length} inquiries`;
+        }
+
+        /* -------------------------------------------------------------- REVIEW */
+        function openInquiryInReview(projNo) {
+            currentProject = projNo;
+            currentDoc = null;
+            switchScreen('screen-review');
+            loadReview(projNo);
+        }
+
+        async function loadReview(projNo) {
+            if (!projNo) return;
+            const pane = document.getElementById('draft-pane');
+            pane.innerHTML = `<div class="p-6 text-slate-400 text-xs">Building ${esc(currentArtifact)} from the corpus…</div>`;
+            try {
+                currentDoc = await api(`/api/artifact/${encodeURIComponent(projNo)}?kind=${currentArtifact}`);
+                renderDraft();
+                renderReviewBanner();
+            } catch (e) { apiDown(pane, e); }
+        }
+
+        function renderReviewBanner() {
+            const d = currentDoc; if (!d) return;
+            const inq = inquiries.find(i => i.project_no === d.project_no) || {};
+            const low = d.confidence === 'Low';
+            const b = document.getElementById('review-banner');
+            b.className = `p-3 rounded-lg border flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs ${low ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`;
+            document.getElementById('review-project-no').textContent = d.project_no;
+            document.getElementById('review-machine-title').textContent = inq.project_name || '';
+            const pill = document.getElementById('review-confidence-pill');
+            pill.textContent = `${d.confidence.toUpperCase()} CONFIDENCE`;
+            pill.className = `text-[10px] font-bold px-2 py-0.5 rounded border ${low ? 'bg-amber-200 text-amber-900 border-amber-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'}`;
+            document.getElementById('review-confidence-desc').textContent =
+                `${d.item_count} extracted items · ${d.citation_rate}% carry a source link · ${d.method}`;
+        }
+
+        function switchDraftTab(kind) {
+            currentArtifact = kind;
+            document.querySelectorAll('.draft-tab-btn').forEach(b => {
+                const on = b.dataset.kind === kind;
+                b.className = 'draft-tab-btn px-3 py-1 rounded text-[11px] ' + (on
+                    ? 'font-bold bg-white border border-slate-300 text-slate-900 shadow-2xs'
+                    : 'font-medium text-slate-600 hover:text-slate-900');
+            });
+            loadReview(currentProject);
+        }
+
+        function renderDraft() {
+            const d = currentDoc;
+            const pane = document.getElementById('draft-pane');
+            let n = 0;
+            pane.innerHTML = d.sections.map(sec => {
+                const items = sec.items.map(it => {
+                    const hasSrc = !!it.source_path;
+                    const cid = hasSrc ? ++n : null;
+                    const chip = hasSrc
+                        ? `<button class="citation-chip" onclick='showSource(${JSON.stringify(it.source_path)},${JSON.stringify(String(it.page || ""))},${cid})'>[${cid}]</button>`
+                        : `<span class="text-[10px] text-slate-400 ml-1">(abgeleitet)</span>`;
+                    const src = hasSrc
+                        ? `<div class="text-[10px] text-slate-400 mt-0.5">${esc(it.filename)}${it.page ? ' · p. ' + esc(it.page) : ''}${it.phase ? ' · ' + esc(it.phase) : ''}</div>`
+                        : '';
+                    return `<li class="mb-2 leading-relaxed">${esc(it.text)} ${chip}${src}</li>`;
+                }).join('') || `<li class="text-slate-400 italic">Nichts gefunden.</li>`;
+                return `<div class="mb-4">
+                    <h3 class="font-bold text-xs text-slate-950 uppercase tracking-wide border-b border-slate-100 pb-1 mb-2">
+                        ${esc(sec.title)}${sec.flag ? ' <span class="text-amber-600">⚑</span>' : ''}
+                    </h3>
+                    ${sec.note ? `<div class="text-[10px] text-slate-400 mb-1.5">${esc(sec.note)}</div>` : ''}
+                    <ul class="text-xs text-slate-800 pl-4 list-disc">${items}</ul>
+                </div>`;
+            }).join('');
+            document.getElementById('citation-count').textContent =
+                `${n} CITATIONS · ${d.citation_rate}% LINKED · NO LLM`;
+        }
+
+        async function showSource(path, page, cid) {
+            const box = document.getElementById('source-viewer-body');
+            document.getElementById('source-doc-name').textContent = path.split('/').pop();
+            document.getElementById('source-page-indicator').textContent = page ? `Page ${page}` : '—';
+            box.innerHTML = `<div class="p-4 text-slate-400 text-xs">Loading source…</div>`;
+            try {
+                const s = await api(`/api/source?path=${encodeURIComponent(path)}&page=${encodeURIComponent(page || '')}`);
+                box.innerHTML = `<div class="bg-white p-5 rounded border border-slate-300 space-y-3 min-h-[400px]">
+                    <div class="text-[9px] text-slate-400 uppercase tracking-widest border-b pb-1">
+                        ${esc(s.project_no)} · ${esc(s.phase || '')} · citation [${cid}]
+                    </div>
+                    <div class="font-bold text-sm text-slate-900">${esc(s.filename)}</div>
+                    <div class="text-[10px] text-slate-500">${esc(s.source_path)}${page ? ' · Seite ' + esc(page) : ''}</div>
+                    ${s.passages.map(p => `<div class="source-highlight text-[11px] leading-relaxed">${esc(p)}</div>`).join('')}
+                </div>`;
+                triggerToast(`Opened source [${cid}] — ${s.filename}`);
+            } catch (e) { apiDown(box, e); }
+        }
+
+        async function approveDraft() {
+            if (!currentDoc) return;
+            try {
+                await api('/api/approve', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_no: currentDoc.project_no, artifact: currentDoc.artifact })
+                });
+                triggerToast(`Approved ${currentDoc.artifact} for ${currentDoc.project_no}`);
+                loadInquiries();
+            } catch (e) { triggerToast('Approve failed — API down'); }
+        }
+
+        /* ---------------------------------------------------- CORRECTION MODAL */
+        function openCorrectionModal() {
+            if (currentDoc) document.getElementById('corr-project').textContent = currentDoc.project_no;
+            document.getElementById('modal-correct').classList.remove('hidden');
+        }
+        function closeCorrectionModal() {
+            document.getElementById('modal-correct').classList.add('hidden');
+        }
+
+        async function saveCorrection() {
+            const payload = {
+                project_no: currentDoc ? currentDoc.project_no : currentProject,
+                artifact: currentDoc ? currentDoc.artifact : '',
+                field: document.getElementById('corr-field').value,
+                action: document.getElementById('corr-action').value || 'Manual correction by reviewer',
+                route_tag: document.getElementById('corr-tag').value,
+                reviewer: 'M. Weber'
+            };
+            try {
+                await api('/api/correction', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                closeCorrectionModal();
+                triggerToast('Correction saved to the audit log.');
+                renderCorrectionLog();
+                loadInquiries();
+            } catch (e) { triggerToast('Save failed — API down'); }
+        }
+
+        /* ----------------------------------------------------- CORRECTION LOG */
+        const TAG_STYLE = {
+            Drift: 'bg-amber-100 text-amber-900 border border-amber-300 font-bold',
+            Content: 'bg-slate-100 text-slate-700 border',
+            OK: 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+        };
+
+        async function renderCorrectionLog() {
+            const tag = document.getElementById('filter-route-tag').value;
+            const tb = document.getElementById('corrections-tbody');
+            try {
+                const d = await api(`/api/corrections?route_tag=${encodeURIComponent(tag)}`);
+                tb.innerHTML = d.corrections.map(c => `
+                    <tr class="${c.route_tag === 'Drift' ? 'bg-amber-50/40' : ''} hover:bg-slate-50">
+                        <td class="p-3 text-slate-500">${esc((c.created_at || '').replace('T', ' ').slice(0, 16))}</td>
+                        <td class="p-3 font-bold text-slate-900">${esc(c.project_no)}<div class="text-[10px] font-normal text-slate-400">${esc(c.artifact || '')}</div></td>
+                        <td class="p-3 text-slate-800">${esc(c.field)}</td>
+                        <td class="p-3 text-slate-700">${esc(c.action)}</td>
+                        <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] ${TAG_STYLE[c.route_tag] || 'bg-slate-100'}">${esc(c.route_tag)}</span></td>
+                    </tr>`).join('') ||
+                    `<tr><td colspan="5" class="p-6 text-center text-slate-400">No corrections logged yet. Open a draft and press “Correct…”.</td></tr>`;
+
+                const s = d.stats;
+                setText('stat-corrections-count', s.corrections);
+                setText('stat-top-field', s.top_field);
+                setText('stat-top-field-sub', s.top_field_count ? `${s.top_field_count} edits recorded` : 'no data yet');
+                setText('stat-drift-count', s.drift);
+                setText('stat-reviews', `${s.approved} approved / ${s.reviews} reviews`);
+            } catch (e) { apiDown(tb.parentElement.parentElement, e); }
+        }
+
+        const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+        /* ----------------------------------------------------------- DASHBOARD */
+        async function renderDashboard() {
+            try {
+                const d = await api('/api/stats');
+                const c = d.corpus, q = d.quality, r = d.review;
+
+                setText('kpi-extract', c.extraction_rate + '%');
+                setBar('kpi-extract-bar', c.extraction_rate);
+                setText('kpi-extract-sub', `${c.extracted_ok}/${c.content_files} content files`);
+
+                setText('kpi-citation', q.citation_rate + '%');
+                setBar('kpi-citation-bar', q.citation_rate);
+
+                setText('kpi-corpus', c.chunks.toLocaleString());
+                setText('kpi-corpus-sub', `${c.projects} projects · ${(c.total_chars / 1e6).toFixed(1)}M chars`);
+
+                setText('kpi-ocr', c.needs_ocr);
+                setText('kpi-ocr-sub', `${q.mode.toUpperCase()} retrieval · no LLM`);
+
+                const mix = d.confidence_mix, tot = Object.values(mix).reduce((a, b) => a + b, 0) || 1;
+                const mixEl = document.getElementById('confidence-mix');
+                const COL = { High: 'var(--success)', Medium: 'var(--warning)', Low: 'var(--destructive)' };
+                mixEl.innerHTML = ['High', 'Medium', 'Low'].filter(k => mix[k]).map(k => `
+                    <div>
+                        <div class="flex justify-between text-[11px] text-slate-600 mb-1">
+                            <span>${k} confidence</span><span class="font-bold">${mix[k]} of ${tot}</span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-2.5 rounded"><div class="h-full rounded" style="width:${100 * mix[k] / tot}%;background:${COL[k]}"></div></div>
+                    </div>`).join('');
+
+                const fmtEl = document.getElementById('format-coverage');
+                fmtEl.innerHTML = Object.entries(d.by_format).slice(0, 8).map(([ext, v]) => `
+                    <div class="flex items-center gap-2 text-[11px]">
+                        <span class="w-14 text-slate-600">${esc(ext)}</span>
+                        <div class="flex-1 bg-slate-100 h-2 rounded"><div class="h-full rounded" style="width:${v.rate}%;background:${v.rate === 100 ? 'var(--success)' : v.rate >= 50 ? 'var(--warning)' : 'var(--destructive)'}"></div></div>
+                        <span class="w-16 text-right text-slate-500">${v.ok}/${v.total}</span>
+                    </div>`).join('');
+
+                setText('review-throughput', `${r.approved} approved · ${r.corrections} corrections · ${r.drift} drift`);
+            } catch (e) { apiDown(document.getElementById('confidence-mix'), e); }
+        }
+
+        function setBar(id, pct) { const el = document.getElementById(id); if (el) el.style.width = pct + '%'; }
+
+        /* -------------------------------------------------------------- TRIAGE */
+        async function renderTriage() {
+            const sel = document.getElementById('triage-project');
+            if (sel && !sel.dataset.filled) {
+                sel.innerHTML = inquiries.map(i =>
+                    `<option value="${esc(i.project_no)}">${esc(i.project_no)} — ${esc(i.project_name)}</option>`).join('');
+                sel.dataset.filled = '1';
+            }
+            const tb = document.getElementById('routing-tbody');
+            if (tb) {
+                tb.innerHTML = inquiries.map(i => `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-3 font-semibold">${esc(i.customer || '—')}</td>
+                        <td class="p-3">${esc(i.assigned_to)}</td>
+                        <td class="p-3 text-slate-500">${esc(i.project_no)}</td>
+                        <td class="p-3">${i.verdict ? `<span class="text-[10px] px-2 py-0.5 rounded border ${i.verdict === 'BID' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-rose-50 text-rose-700 border-rose-200'}">${esc(i.verdict)}</span>` : '<span class="text-slate-400 text-[11px]">not decided</span>'}</td>
+                    </tr>`).join('');
+            }
+        }
+
+        async function submitDecision(verdict) {
+            const project_no = document.getElementById('triage-project').value;
+            const criteria = [...document.querySelectorAll('.triage-crit')]
+                .filter(c => c.checked).map(c => c.dataset.label);
+            const assigned_to = document.getElementById('triage-assign').value;
+            try {
+                await api('/api/decision', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ project_no, verdict, criteria, assigned_to })
+                });
+                triggerToast(`${project_no} marked ${verdict} · ${criteria.length}/4 criteria met`);
+                await loadInquiries();
+                renderTriage();
+            } catch (e) { triggerToast('Decision failed — API down'); }
+        }
+
+
+        /* --------------------------------------------------------------- DRIFT */
+        const DRIFT_STYLE = {
+            MULTIPLE_VERSIONS: { icon: '⚑', cls: 'border-rose-200 bg-rose-50/40', tag: 'bg-rose-50 text-rose-700 border-rose-200' },
+            STALE_REFERENCE:   { icon: '⚠', cls: 'border-amber-200 bg-amber-50/40', tag: 'bg-amber-100 text-amber-900 border-amber-300' },
+            NOT_HELD:          { icon: '○', cls: 'border-slate-200', tag: 'bg-slate-100 text-slate-700 border-slate-200' }
+        };
+
+        async function renderDrift() {
+            const kind = document.getElementById('filter-drift-kind').value;
+            const list = document.getElementById('drift-list');
+            try {
+                const all = await api('/api/drift');
+                const k = all.by_kind || {};
+                setText('drift-multi', k.MULTIPLE_VERSIONS || 0);
+                setText('drift-stale', k.STALE_REFERENCE || 0);
+                setText('drift-notheld', k.NOT_HELD || 0);
+                const actionable = (k.MULTIPLE_VERSIONS || 0) + (k.STALE_REFERENCE || 0);
+                setText('drift-badge', actionable);
+
+                const shown = kind ? all.findings.filter(f => f.kind === kind) : all.findings;
+                list.innerHTML = shown.map(f => {
+                    const st = DRIFT_STYLE[f.kind] || DRIFT_STYLE.NOT_HELD;
+                    const files = (f.files || []).slice(0, 4).map(fl => {
+                        const folder = fl.path ? fl.path.split('/').slice(1, -1).join('/') : '';
+                        return `<div class="text-[10px] text-slate-500 pl-4">└─ <span class="text-slate-700">${esc(fl.filename)}</span>${fl.page ? ' p.' + esc(fl.page) : ''}${folder ? ` <span class="text-slate-400">(${esc(folder)})</span>` : ''}</div>`;
+                    }).join('');
+                    return `<div class="border rounded-lg p-3 ${st.cls}">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span>${st.icon}</span>
+                            <span class="text-[10px] px-2 py-0.5 rounded border ${st.tag}">${esc(f.kind.replace(/_/g, ' '))}</span>
+                            <span class="font-bold text-xs text-slate-900">${esc(f.doc_id)}</span>
+                            <span class="text-[10px] text-slate-400 ml-auto">${esc(f.project_no || '')}</span>
+                        </div>
+                        <div class="text-[11px] text-slate-700 mb-1.5 pl-6">${esc(f.detail)}</div>
+                        ${files}
+                    </div>`;
+                }).join('') || '<div class="p-4 text-center text-slate-400 text-xs">No findings.</div>';
+            } catch (e) { apiDown(list, e); }
+            loadSpecDiffPairs();
+        }
+
+        let specPairs = [];
+        async function loadSpecDiffPairs() {
+            const sel = document.getElementById('specdiff-pair');
+            if (sel.dataset.filled) return;
+            try {
+                const d = await api('/api/specdiff/pairs');
+                specPairs = d.pairs || [];
+                sel.innerHTML = specPairs.map((p, i) =>
+                    `<option value="${i}">${esc(p.a)}  ↔  ${esc(p.b)}</option>`).join('')
+                    || '<option>no version pairs detected</option>';
+                sel.dataset.filled = '1';
+                if (specPairs.length) renderSpecDiff();
+            } catch (e) { /* drift list already reports API state */ }
+        }
+
+        async function renderSpecDiff() {
+            const idx = document.getElementById('specdiff-pair').value;
+            const box = document.getElementById('specdiff-result');
+            const pair = specPairs[idx];
+            if (!pair) return;
+            box.innerHTML = '<div class="text-slate-400 text-xs p-2">Diffing…</div>';
+            try {
+                const d = await api(`/api/specdiff?a=${encodeURIComponent(pair.a)}&b=${encodeURIComponent(pair.b)}&numeric=true&limit=12`);
+                const changed = (d.changed || []).map(c => `
+                    <div class="border border-slate-200 rounded p-2 mb-1.5">
+                        ${c.from.map(x => `<div class="text-[11px] text-rose-700">− ${esc(x)}</div>`).join('')}
+                        ${c.to.map(x => `<div class="text-[11px] text-emerald-700">+ ${esc(x)}</div>`).join('')}
+                    </div>`).join('');
+                box.innerHTML = `
+                    <div class="flex flex-wrap gap-3 text-[11px] text-slate-600 pb-1">
+                        <span><b>${d.similarity}%</b> similar</span>
+                        <span class="text-emerald-700">+${d.counts.added} added</span>
+                        <span class="text-rose-700">−${d.counts.removed} removed</span>
+                        <span class="text-amber-700">~${d.counts.changed} changed</span>
+                        <span class="text-slate-400 ml-auto">numeric changes only</span>
+                    </div>
+                    ${changed || '<div class="text-slate-400 text-xs p-2">No numeric changes.</div>'}`;
+            } catch (e) { apiDown(box, e); }
+        }
+
+        /* ---------------------------------------------------- PRECEDENT SEARCH */
+        function executePrecedentSearch() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(runPrecedentSearch, 220);
+        }
+        function fillSearch(t) {
+            document.getElementById('precedent-search-input').value = t;
+            runPrecedentSearch();
+        }
+
+        async function runPrecedentSearch() {
+            const q = document.getElementById('precedent-search-input').value.trim();
+            const container = document.getElementById('precedent-results-container');
+            const countEl = document.getElementById('search-results-count');
+            if (q.length < 2) {
+                container.innerHTML = '';
+                countEl.textContent = 'Type a machine description to search the corpus';
+                return;
+            }
+            countEl.textContent = 'Searching…';
+            let data;
+            try {
+                data = await api(`/api/search?q=${encodeURIComponent(q)}&mode=auto&limit=6`);
+            } catch (e) { apiDown(container, e); countEl.textContent = 'Offline'; return; }
+
+            const projects = data.projects || [];
+            countEl.textContent = projects.length
+                ? `${projects.length} comparable project${projects.length > 1 ? 's' : ''} · ${data.mode.toUpperCase()} · local index`
+                : 'Kein passender Beleg gefunden.';
+
+            container.innerHTML = projects.map(p => `
+                <div class="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-2 hover:border-slate-400 transition">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold text-xs bg-slate-950 text-white px-2 py-0.5 rounded">${esc(p.project_no || '—')}</span>
+                                <span class="font-bold text-xs text-slate-900">${esc(p.customer || '')}</span>
+                                <span class="text-[10px] text-slate-400">relevance ${(p.score || 0).toFixed(3)}</span>
+                            </div>
+                            <h4 class="font-bold text-xs text-slate-800 mt-1">${esc(p.project_name || '')}</h4>
+                        </div>
+                        <button onclick="openInquiryInReview('${esc(p.project_no)}')" class="bg-slate-100 hover:bg-slate-950 hover:text-white text-slate-800 text-[10px] px-2.5 py-1 rounded transition border border-slate-300">Open project →</button>
+                    </div>
+                    <div class="text-[10px] text-slate-400 uppercase tracking-wide pt-1">Matching passages</div>
+                    ${(p.hits || []).map(h => `
+                        <div class="p-2 bg-slate-50 rounded border border-slate-100 text-[11px] text-slate-600 mb-1.5">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="font-semibold text-slate-900">${esc(h.filename)}</span>
+                                ${h.page ? `<span class="text-slate-400">p. ${esc(h.page)}</span>` : ''}
+                                ${h.phase ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 border">${esc(h.phase)}</span>` : ''}
+                            </div>
+                            <div class="leading-relaxed">${esc(h.snippet)}</div>
+                        </div>`).join('')}
+                </div>`).join('');
+        }
+
+        /* --------------------------------------------------------------- MISC */
+        async function refreshIndexStatus() {
+            try {
+                const h = await api('/api/health');
+                setText('index-status', `${h.chunks.toLocaleString()} chunks · ${h.projects.length} projects · ${h.mode.toUpperCase()}${h.tier1_dense ? ' + embeddings' : ''} · no LLM`);
+            } catch (e) { setText('index-status', 'local index offline'); }
+        }
+
+        function triggerToast(msg) {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-msg').textContent = msg;
+            t.classList.remove('hidden');
+            clearTimeout(window._toastT);
+            window._toastT = setTimeout(() => t.classList.add('hidden'), 3200);
+        }
+        function hideToast() { document.getElementById('toast').classList.add('hidden'); }
+
+        async function refreshDriftBadge() {
+            try {
+                const d = await api('/api/drift');
+                const k = d.by_kind || {};
+                setText('drift-badge', (k.MULTIPLE_VERSIONS || 0) + (k.STALE_REFERENCE || 0));
+            } catch (e) { /* sidebar badge is non-critical */ }
+        }
+
+        window.onload = async function () {
+            await loadInquiries();
+            refreshIndexStatus();
+            refreshDriftBadge();
+            renderCorrectionLog();
+        };
+    </script>
+</body>
+</html>
