@@ -40,6 +40,11 @@ Classification is rule-based requirements engineering, all inspectable:
 Confidence is a **retrieval property** (item count + citation rate), not a model
 opinion.
 
+> **New to this codebase?** Read [`LEARNBOOK.md`](LEARNBOOK.md) — a guided
+> walkthrough of how the system thinks, why each design decision was made, and
+> the bugs that shaped it. This README covers how to *run* it; the learnbook
+> covers how to *understand* it.
+
 ## Quick start
 
 Everything runs locally. Nothing leaves the machine, no API keys, no LLM.
