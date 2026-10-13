@@ -1,0 +1,27 @@
+folienart;feld_id;quelle;befuellbar;sicherheit;prio;bemerkung
+# Korrekturen aus der Pruefung gegen LH_04K_000051_V1.02 (11.10.2026).
+# Grundlage: je Inhaltsart 8 Fundstellen gezaehlt. 0 von 8 = nein,
+# 1-2 = unklar, 3-8 = ja. Leere Zellen aendern nichts.
+Bauteile;ph14;Lastenheft;nein;hoch;3;0 von 8 verwertbar. Die Treffer waren die eigene Dokumentnummer aus Kopf- und Fusszeile, Dateiformate (DXF STP DWG) und ein Verweis auf eine Zeichnung ohne Nummer. Keine Bauteil-Zeichnungsnummer im Lastenheft.
+Bauteile;ph25;Lastenheft;nein;hoch;3;wie ph14, zweiter Bauteilblock.
+Bauteile;ph13;Lastenheft;teilweise;mittel;2;1 von 8 verwertbar. Produktbezeichnung der Linie ist vorhanden, einzelne Bauteilnamen nicht. Das Wort component steht fast immer im Fliesstext.
+Bauteile;ph24;Lastenheft;teilweise;mittel;2;wie ph13, zweiter Bauteilblock.
+Bauteile;ph15;Lastenheft;teilweise;niedrig;2;keine eigene Pruefung. Haengt an der Zeichnungsnummer, die nicht vorkommt.
+Bauteile;ph20;Lastenheft;teilweise;niedrig;2;wie ph15.
+Bauteile;ph26;Lastenheft;teilweise;niedrig;2;wie ph15.
+Bauteile;ph31;Lastenheft;teilweise;niedrig;2;wie ph15.
+Bauteile;ph18;Lastenheft;teilweise;niedrig;2;2 von 8 verwertbar. Zufuehrung und Verpackungseinheit sind echt, drei Treffer waren Fehlgriffe (M12 cable box, Firewall box, data carrier).
+Bauteile;ph29;Lastenheft;teilweise;niedrig;2;wie ph18, zweiter Bauteilblock.
+Bauteile;ph22;Lastenheft;ja;mittel;1;3 von 8 verwertbar. Belegt ist, DASS es Varianten gibt (Einstellungen je Produktvariante, Referenzmuster je Variante).
+Bauteile;ph33;Lastenheft;ja;mittel;1;wie ph22, zweiter Bauteilblock.
+Bauteile/Varianten (Grafik);txt:Variante;Lastenheft;nein;mittel;3;Variantennamen kommen im Lastenheft nicht vor, nur die Aussage dass Varianten existieren. Das Feld bleibt leer.
+Fähigkeitstabelle;tab:Faehigkeit:Prozess;Lastenheft;ja;hoch;1;3 von 8 verwertbar. Einlegen und Positionieren des Kabels, automatische Sichtpruefung mit 360-Grad-System, Ueberwachung von Einpresskraeften. Quelle ist das Lastenheft, nicht erst die Spezifikation.
+Fähigkeitstabelle;tab:Faehigkeit:Verfahren;Lastenheft;ja;hoch;1;4 von 8 verwertbar. MSA, MFU, MGF und PFU stehen woertlich im Lastenheft.
+Fähigkeitstabelle;tab:Faehigkeit:Kennwert;Lastenheft;ja;hoch;1;Cgk >= 1.33, Cg >= 1.33, Cpk >= 1.67, Cp >= 1.67 stehen woertlich im Lastenheft. Staerkster Befund der ganzen Pruefung.
+Fähigkeitstabelle;tab:Faehigkeit:Toleranz;Spezifikation;teilweise;mittel;2;2 von 8 verwertbar (Laengenwiederholgenauigkeit +/-1 mm, Abisolierlaenge +/-0,2 mm). Die anderen sechs waren Grenzwerte anderer Art (Hallenmass, Netzspannung, Laermpegel). WICHTIG: das Lastenheft verweist fuer die Crimphoehe ausdruecklich auf die Prozessspezifikation - ohne die ist dieses Feld unvollstaendig.
+Kalibrier-/Einrichtteile;ph11;Lastenheft;ja;mittel;1;4 von 8 verwertbar. Folgekalibrierung durch den Auftraggeber, Kalibrierschein nach ISO/IEC 17025, automatische Einstellung nach Auftragsdaten, Referenzmuster je Variante. Fehltreffer kommen von set up und adjustment in anderem Zusammenhang.
+Stationsbeschriebung;ph0;Lastenheft;teilweise;mittel;2;2 von 8 verwertbar. Stationsbenennungen gibt es (assembly station, Output station), Stationsnummern NICHT. Damit ist die offene Frage halb beantwortet: die Nummerierung kommt nicht vom Kunden, die ist intern.
+Auslegung Roboter;ph16;Lastenheft;teilweise;mittel;2;1 von 6 verwertbar, aber der Treffer ist eindeutig: geforderte Maschinentaktzeit pro Station mit Zahl und Einheit. Damit ist belegt, dass die Taktzeit Kundenvorgabe ist - die offene Frage an Daniel ist beantwortet.
+Auslegung Achssystem;ph16;Lastenheft;teilweise;mittel;2;wie Auslegung Roboter ph16.
+Auslegung Antrieb/Getriebe;ph16;Lastenheft;teilweise;mittel;2;wie Auslegung Roboter ph16.
+Auslegung Bildverarbeitung;ph16;Lastenheft;teilweise;mittel;2;wie Auslegung Roboter ph16.

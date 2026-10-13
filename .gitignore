@@ -1,0 +1,62 @@
+# ---------------------------------------------------------------------------
+# Lokale Umgebung
+# ---------------------------------------------------------------------------
+.venv/
+.venv.zip
+__pycache__/
+*.pyc
+vendor/
+fastembed_cache/
+
+# ---------------------------------------------------------------------------
+# Abgeleitete Daten. Neu erzeugbar mit extract.py / ocr.py / index.py.
+# Niemals committen: enthaelt Text aus vertraulichen Kundendokumenten.
+# ---------------------------------------------------------------------------
+out/
+vectors/
+*.jsonl
+
+# ---------------------------------------------------------------------------
+# Messordner. Enthaelt Zwischenstaende der Extraktion mit Kundentext
+# (chunks_vor_B.jsonl ca. 13 MB, 04_requirements_stand.jsonl ca. 4 MB)
+# sowie Dateilisten des Kundenbestands.
+# ---------------------------------------------------------------------------
+messung/
+
+# ---------------------------------------------------------------------------
+# Ausgelieferte Dateien. Enthalten woertliche Kundensaetze
+# (goldstandard_*_gefuellt.csv, Gegenlesen_20_Saetze.docx) und interne
+# Auswertungen.
+# ---------------------------------------------------------------------------
+Claude outputs/
+
+# ---------------------------------------------------------------------------
+# Kundendokumente und Vorlagen von Gluth
+# ---------------------------------------------------------------------------
+*.pptx
+*.pdf
+*.xlsx
+*.docx
+*.doc
+*.7z
+*.zip
+
+# ---------------------------------------------------------------------------
+# Erzeugte Dateien. Entstehen neu aus der Vorlage, muessen nicht mit.
+# ---------------------------------------------------------------------------
+zielfelder.csv
+uebersicht_folienarten.html
+beispiel_chunks.jsonl
+
+# Ausnahme: die Korrekturen sind Eingabe und nicht reproduzierbar.
+!zielfelder_korrekturen.csv
+
+# ---------------------------------------------------------------------------
+# Sicherungskopien und Altstaende
+# ---------------------------------------------------------------------------
+*.bak
+*-1.py
+*-2.py
+*_vor_A.py
+*_vor_B.py
+*_vor_dublettenfix.py
