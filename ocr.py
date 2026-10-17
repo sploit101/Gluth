@@ -26,11 +26,15 @@ import sys
 import time
 from pathlib import Path
 
-import Quartz
-import Vision
-from Foundation import NSURL
+if sys.platform == "darwin":
+    try:
+        import Quartz
+        import Vision
+        from Foundation import NSURL
+    except ImportError:
+        Quartz = Vision = NSURL = None
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent
 OUT = Path(__file__).resolve().parent / "out"
 OCR_DIR = OUT / "ocr"
 MANIFEST = OUT / "manifest.json"
@@ -152,6 +156,39 @@ def ocr_image(path: Path) -> list[dict]:
     return out
 
 
+def ocr_pdf_tesseract(path: Path) -> list[dict]:
+    """Windows/Linux fallback using a local Tesseract executable."""
+    import io
+    import pymupdf
+    import pytesseract
+    from PIL import Image
+
+    pages = []
+    with pymupdf.open(path) as doc:
+        for number, page in enumerate(doc, 1):
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(DPI_SCALE, DPI_SCALE))
+            image = Image.open(io.BytesIO(pix.tobytes("png")))
+            text = pytesseract.image_to_string(image)
+            if text.strip():
+                pages.append({"page": str(number), "text": text})
+    return pages
+
+
+def ocr_image_tesseract(path: Path) -> list[dict]:
+    import pytesseract
+    from PIL import Image, ImageSequence
+
+    pages = []
+    with Image.open(path) as image:
+        frames = list(ImageSequence.Iterator(image))
+        for number, frame in enumerate(frames, 1):
+            text = pytesseract.image_to_string(frame)
+            if text.strip():
+                pages.append({"page": str(number) if len(frames) > 1 else "",
+                              "text": text})
+    return pages
+
+
 def targets() -> list[dict]:
     if not MANIFEST.exists():
         raise SystemExit("Run extract.py first (out/manifest.json missing).")
@@ -176,6 +213,11 @@ def main() -> int:
         print(f"\n  {len(rows)} files need OCR\n")
         return 0
 
+    if rows and sys.platform == "darwin" and Quartz is None:
+        print("macOS OCR needs pyobjc-framework-Vision and pyobjc-framework-Quartz.",
+              file=sys.stderr)
+        return 2
+
     OCR_DIR.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     done = skipped = failed = 0
@@ -195,7 +237,11 @@ def main() -> int:
 
         try:
             ext = r["ext"].lower()
-            pages = ocr_pdf(path) if ext == ".pdf" else ocr_image(path)
+            if sys.platform == "darwin":
+                pages = ocr_pdf(path) if ext == ".pdf" else ocr_image(path)
+            else:
+                pages = (ocr_pdf_tesseract(path) if ext == ".pdf"
+                         else ocr_image_tesseract(path))
         except Exception as e:
             print(f"  ✗ {rel[:64]} — {type(e).__name__}: {e}", flush=True)
             failed += 1

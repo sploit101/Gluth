@@ -64,15 +64,106 @@ OUT = HERE / "out"
 # Anforderungen mitgenommen. Wuerden wir sie zuordnen, stuenden in der Akte
 # Seitenfusszeilen. Diese Saetze werden vorher verworfen und gezaehlt.
 # ---------------------------------------------------------------------------
-MUELL = re.compile(
+# --- harte Faelle: Kopf- und Fusszeilen, Inhaltsverzeichnis, Versionstabelle
+MUELL_HART = re.compile(
     r"(printouts?\s+are\s+effective|not\s+subject\s+to\s+change\s+service|"
     r"all\s+rights\s+reserved|alle\s+rechte\s+vorbehalten|"
     r"distribution\s+within|weitergabe\s+sowie\s+vervielf|"
-    r"template:\s*v\d|rs\s*no\.?:|"
+    r"template:\s*v\d|\brs\s*no\.?:|dok\.?-?id|"
     r"version\s+information\s+version\s+date|"
-    r"\.{6,}|"                                # Inhaltsverzeichnis
+    r"\.{6,}|"                               # Inhaltsverzeichnis
     r"confirmation\s*\.{3,}|"
-    r"^\s*\d+\s*$)", re.I)
+    r"^\s*[\d\s.,;:()-]+$)", re.I)         # nur Zahlen und Zeichen
+
+# --- Signale fuer zerfallene Tabellen und aneinandergeklebte Ueberschriften
+#
+# Hintergrund: Die Textgewinnung aus PDF macht aus einer Tabellenzeile und aus
+# einem Inhaltsverzeichnis eine Zeichenkette, die oberflaechlich wie ein Satz
+# aussieht. Beispiele aus dem echten Lastenheft:
+#   "80 - 500 ESD component Yes No Technical cleanliness requirements Yes ..."
+#   "Key contacts DRAEXLMAIER Group 6 General project description A ..."
+# Beide wuerden sonst in der Akte landen und waeren das Erste, was ein Leser
+# sieht.
+#
+# Statt immer neuer Einzelregeln werden messbare Signale gezaehlt. Feuern
+# mindestens zwei, gilt der Satz als nicht verwertbar. Welche Signale gefeuert
+# haben, steht in out/zuordnung_verworfen.xlsx - damit ist jede Entscheidung
+# nachpruefbar und nichts verschwindet stillschweigend.
+
+SATZZEICHEN = re.compile(r'[.,;:!?()\[\]\u201e\u201c\u00ab\u00bb"]')
+JA_NEIN = re.compile(r"\b(yes|no|ja|nein)\b", re.I)
+VERB = re.compile(
+    r"\b(must|shall|should|may|can|is|are|was|were|has|have|had|will|be|been|"
+    r"muss|müssen|soll|sollen|darf|dürfen|kann|können|ist|sind|war|waren|"
+    r"wird|werden|hat|haben|zu\s+\w+en)\b", re.I)
+KAPITELNUMMER = re.compile(
+    r"[A-ZÄÖÜ][a-zäöüß]{2,}\s+\d{1,2}(\.\d{1,2})?\s+[A-ZÄÖÜ]")
+GLIEDERUNG = re.compile(r"\b\d{1,2}\.\d{1,2}(\.\d{1,2})?\s")
+ZAHL_TOKEN = re.compile(r"^[\d.,/-]+$")
+ZAHLBEREICH = re.compile(r"\d+\s*[-\u2013]\s*\d+")
+GROSS_TOKEN = re.compile(r"^[A-ZÄÖÜ]")
+
+MIN_FUER_SIGNALE = 120          # kurze Saetze werden nicht so geprueft
+
+
+def muell_signale(text: str) -> list[str]:
+    """Welche Signale sprechen gegen diesen Satz? Leere Liste = verwertbar."""
+    t = norm(text)
+    if MUELL_HART.search(t):
+        return ["Kopfzeile oder Verzeichnis"]
+    if len(t) < MIN_FUER_SIGNALE:
+        return []
+
+    sig = []
+
+    # A  Satzzeichen-Armut. Fliesstext hat Zeichensetzung, Tabellenzeilen nicht.
+    zeichen = len(SATZZEICHEN.findall(t))
+    if zeichen == 0 or len(t) / zeichen > 90:
+        sig.append("kaum Satzzeichen")
+
+    # B  Mehrere Ja/Nein in einem Satz = Ankreuzspalten einer Tabelle
+    if len(JA_NEIN.findall(t)) >= 2:
+        sig.append("mehrere Ja/Nein")
+
+    # C  Hoher Zahlenanteil = Messwert- oder Kalkulationstabelle
+    tok = t.split()
+    if tok:
+        anteil = sum(1 for w in tok if ZAHL_TOKEN.match(w)) / len(tok)
+        if anteil > 0.15:
+            sig.append(f"Zahlenanteil {anteil:.0%}")
+
+    # D  Kein Verb = kein Satz
+    if not VERB.search(t):
+        sig.append("kein Verb")
+
+    # E  Kapitelnummer mitten im Text: "... Group 6 General ..."
+    if KAPITELNUMMER.search(t):
+        sig.append("Kapitelnummer im Text")
+
+    # F  Mehrere Gliederungsnummern = Inhaltsverzeichnis
+    if len(GLIEDERUNG.findall(t)) >= 2:
+        sig.append("mehrere Gliederungsnummern")
+
+    # G  Tabellenrest am ANFANG. Der Anfang entscheidet den ersten Eindruck:
+    #    "80 - 500 ESD component Yes No Technical cleanliness requirements ..."
+    #    Kein Satzzeichen in den ersten 70 Zeichen UND entweder ein
+    #    Zahlenbereich, ein Ja/Nein oder mehrere Grossschreibungen.
+    kopf = t[:70]
+    if not SATZZEICHEN.search(kopf):
+        kopf_tok = kopf.split()[1:]
+        gross = sum(1 for w in kopf_tok if GROSS_TOKEN.match(w))
+        if (ZAHLBEREICH.search(kopf) or JA_NEIN.search(kopf) or gross >= 3):
+            sig.append("Tabellenrest am Anfang")
+
+    # H  Aneinandergeklebte Aufzaehlung: viele grossgeschriebene Woerter
+    #    mitten im Text, weil aus Stichpunkten eine Zeile wurde.
+    if tok and len(tok) > 8:
+        anteil_gross = sum(1 for w in tok[1:] if GROSS_TOKEN.match(w)) / len(tok)
+        if anteil_gross > 0.33:
+            sig.append(f"Aufzaehlung geklebt ({anteil_gross:.0%} gross)")
+
+    return sig
+
 
 # Mindestlaenge, damit ein Satz ueberhaupt Inhalt tragen kann
 MIN_LAENGE = 40
@@ -296,13 +387,21 @@ def main() -> int:
 
     # ------------------------------------------------------------- zuordnen
     treffer = []
+    verworfen = []
     muell, zu_kurz, ohne_feld = 0, 0, 0
     gesehen = set()
+    signal_zaehler = collections.Counter()
 
     for r in rows:
         t = text_von(r)
-        if MUELL.search(t):
+        sig = muell_signale(t)
+        if len(sig) >= 2 or (sig and sig[0] == "Kopfzeile oder Verzeichnis"):
             muell += 1
+            for x in sig:
+                signal_zaehler[x] += 1
+            verworfen.append({"text": t, "signale": "; ".join(sig),
+                              "datei": r["_datei"], "seite": r["_seite"],
+                              "binding": r.get("binding", "")})
             continue
         if len(t) < MIN_LAENGE:
             zu_kurz += 1
@@ -384,7 +483,7 @@ def main() -> int:
     if a.nur_sichere:
         L.append("  nur Felder mit befuellbar=ja")
     L += [f"  Anforderungen betrachtet    {betrachtet}",
-          f"  davon Kopf-/Fusszeilen weg  {muell}",
+          f"  davon als Muell verworfen   {muell}",
           f"  davon zu kurz weg           {zu_kurz}",
           f"  davon kein passendes Feld   {ohne_feld}",
           f"  davon zugeordnet            {verwertet} "
@@ -401,7 +500,17 @@ def main() -> int:
     L += ["", "  Je Regel:"]
     for k, n in je_regel.most_common():
         L.append(f"    {n:>5}  {k}")
+    if signal_zaehler:
+        L += ["", "  Warum verworfen wurde (Mehrfachnennung moeglich):"]
+        for k, n in signal_zaehler.most_common():
+            L.append(f"    {n:>5}  {k}")
     L += ["", "  Lesart:",
+          "    Verworfen wird erst, wenn MINDESTENS ZWEI Signale sprechen",
+          "    (oder der Satz eindeutig Kopfzeile bzw. Verzeichnis ist). Alle",
+          "    verworfenen Saetze stehen mit Begruendung in",
+          "    out/zuordnung_verworfen.xlsx - bitte stichprobenartig pruefen,",
+          "    ob dort etwas Brauchbares gelandet ist.",
+          "",
           "    'kein passendes Feld' ist kein Fehler. Ein Lastenheft enthaelt",
           "    Abnahme-, Dokumentations- und Rechtsanforderungen, fuer die es",
           "    in der Stationsakte kein Feld gibt.",
@@ -466,6 +575,27 @@ def main() -> int:
             z["unit"], z["station"], z["seite"], z["text"], "",
         ], f)
     wb.close()
+
+    if verworfen:
+        vz = OUT / "zuordnung_verworfen.xlsx"
+        try:
+            wbv = xlsxwriter.Workbook(str(vz))
+            wsv = wbv.add_worksheet("Verworfen")
+            for i, (sp, br) in enumerate(zip(
+                    ["Signale", "Verbindlichkeit", "Datei", "Seite", "Wortlaut"],
+                    [40, 13, 34, 7, 110])):
+                wsv.write(0, i, sp, kopf)
+                wsv.set_column(i, i, br)
+            wsv.freeze_panes(1, 0)
+            wsv.autofilter(0, 0, len(verworfen), 4)
+            for n, v in enumerate(verworfen, start=1):
+                wsv.write_row(n, 0, [v["signale"], v["binding"], v["datei"],
+                                     v["seite"], v["text"]], zelle)
+            wbv.close()
+            print()
+            print(f"  {vz}  verworfene Saetze - VERTRAULICH")
+        except PermissionError:
+            print("HINWEIS: zuordnung_verworfen.xlsx ist in Excel offen.")
 
     print()
     print("geschrieben:")

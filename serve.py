@@ -15,10 +15,15 @@ Endpoints
 from __future__ import annotations
 
 import json
+import asyncio
+import subprocess
+import sys
+import threading
+import uuid
 from collections import Counter
 from pathlib import Path
 
-from fastapi import Body, FastAPI, Query
+from fastapi import Body, FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -32,13 +37,18 @@ import store as store_mod
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "out"
+SOURCES = HERE / "sources"
+WORKFLOW_FILE = OUT / "station_workflow.json"
+WORKFLOW_LOCK = threading.Lock()
 UI_FILE = HERE / "ui.html"
+FRONTEND_DIST = HERE / "frontend" / "dist"
 VENDOR = HERE / "vendor"          # local copies of CSS/JS — no internet needed
 
 app = FastAPI(title="Gluth RFQ — local retrieval API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_methods=["*"], allow_headers=["*"],
 )
 
 VENDOR.mkdir(parents=True, exist_ok=True)
@@ -55,7 +65,7 @@ def health():
     has_vec = (OUT / "vectors.npy").exists()
     projects = sorted({c["project_no"] for c in chunks if c["project_no"]})
     return {
-        "status": "ok",
+        "status": "ok" if chunks and (OUT / "bm25").exists() else "setup_required",
         "chunks": len(chunks),
         "projects": projects,
         "tier0_bm25": (OUT / "bm25").exists(),
@@ -74,6 +84,9 @@ def api_search(
     project: str | None = None,
     phase: str | None = None,
 ):
+    if not search_mod.load_chunks() or not (OUT / "bm25").exists():
+        return JSONResponse({"error": "run.py must build the corpus and index first"},
+                            status_code=503)
     return search_mod.search(q, mode=mode, project_limit=limit,
                              customer=customer, project=project, phase=phase)
 
@@ -339,8 +352,167 @@ def api_specdiff(a: str, b: str, limit: int = 25, numeric: bool = False):
     }
 
 
+@app.get("/api/station")
+def api_station():
+    """Read the latest locally generated mapping and station output."""
+    mapping = OUT / "zuordnung.jsonl"
+    rows = []
+    if mapping.exists():
+        with mapping.open(encoding="utf-8") as stream:
+            rows = [json.loads(line) for line in stream if line.strip()]
+    workflow = json.loads(WORKFLOW_FILE.read_text(encoding="utf-8")) if WORKFLOW_FILE.exists() else None
+    outputs = sorted(OUT.glob("Stationsakte_*.pptx"),
+                     key=lambda path: path.stat().st_mtime, reverse=True)
+    latest = (OUT / workflow["output"] if workflow and workflow.get("output") else None)
+    if workflow is None:
+        latest = next((p for p in outputs if p.name != "Stationsakte_gefuellt.pptx"),
+                      outputs[0] if outputs else None)
+    return {
+        "count": len(rows),
+        "review_count": sum(bool(row.get("pruefen")) for row in rows),
+        "station": rows[0].get("station", "") if rows else "",
+        "mappings": rows,
+        "has_review_sheet": (OUT / "zuordnung.xlsx").exists(),
+        "latest_output": latest.name if latest and latest.is_file() else None,
+        "draft_ready": WORKFLOW_FILE.exists(),
+    }
+
+
+def _run_stage(*args: str) -> tuple[bool, str]:
+    try:
+        result = subprocess.run(
+            [sys.executable, *args], cwd=HERE, capture_output=True,
+            text=True, errors="replace", timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "Generation timed out after 10 minutes."
+    output = (result.stdout + "\n" + result.stderr).strip()
+    return result.returncode == 0, output[-6000:]
+
+
+async def _save_upload(upload: UploadFile, destination: Path, limit: int) -> bool:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    size = 0
+    with destination.open("wb") as stream:
+        while chunk := await upload.read(1024 * 1024):
+            size += len(chunk)
+            if size > limit:
+                destination.unlink(missing_ok=True)
+                return False
+            stream.write(chunk)
+    return size > 0
+
+
+@app.post("/api/station/draft")
+async def api_station_draft(
+    request: Request,
+    station: str = Form(...),
+    file_filter: str = Form(""),
+    template: UploadFile | None = File(None),
+    documents: list[UploadFile] | None = File(None),
+):
+    """Create a review mapping from uploaded files or the existing local corpus."""
+    if request.headers.get("origin") not in (None, "http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:8800", "http://localhost:8800"):
+        return JSONResponse({"error": "This local operation must come from the Gluth app."}, status_code=403)
+    station = station.strip()
+    if not station or len(station) > 120:
+        return JSONResponse({"error": "Enter a station name (up to 120 characters)."}, status_code=400)
+    if not WORKFLOW_LOCK.acquire(blocking=False):
+        return JSONResponse({"error": "A station job is already running."}, status_code=409)
+    try:
+        uploads = documents or []
+        if len(uploads) > 20:
+            return JSONResponse({"error": "Upload at most 20 documents at a time."}, status_code=400)
+        run_id = uuid.uuid4().hex
+        template_path = OUT / "uploads" / run_id / "template.pptx"
+        if template:
+            if Path(template.filename or "").suffix.lower() != ".pptx":
+                return JSONResponse({"error": "The template must be a .pptx file."}, status_code=400)
+            if not await _save_upload(template, template_path, 30 * 1024 * 1024):
+                return JSONResponse({"error": "Template is empty or larger than 30 MB."}, status_code=400)
+        else:
+            template_path = OUT / "vorlage_stationsakte.pptx"
+            if not template_path.is_file():
+                return JSONResponse({"error": "Choose a PowerPoint template."}, status_code=400)
+        input_path = SOURCES
+        if uploads:
+            input_path = SOURCES / "_uploads" / run_id
+            allowed = {".pdf", ".docx", ".doc", ".txt", ".md", ".xlsx", ".xlsm", ".pptx"}
+            names: set[str] = set()
+            for upload in uploads:
+                name = Path(upload.filename or "").name
+                if not name or name in names or Path(name).suffix.lower() not in allowed:
+                    return JSONResponse({"error": "Use unique PDF, Word, text, spreadsheet, or PowerPoint source filenames."}, status_code=400)
+                names.add(name)
+                if not await _save_upload(upload, input_path / name, 30 * 1024 * 1024):
+                    return JSONResponse({"error": f"{name} is empty or larger than 30 MB."}, status_code=400)
+        elif not SOURCES.is_dir() or not any(path.is_file() for path in SOURCES.rglob("*")):
+            return JSONResponse({"error": "Upload source documents first."}, status_code=400)
+        WORKFLOW_FILE.unlink(missing_ok=True)
+        args = [str(HERE / "run.py"), "--input", str(input_path),
+                "--template", str(template_path), "--station", station]
+        if file_filter.strip() and not uploads:
+            args += ["--file", file_filter.strip()[:120]]
+        ok, log = await asyncio.to_thread(_run_stage, *args)
+        if not ok:
+            return JSONResponse({"error": "Draft generation failed.", "log": log}, status_code=500)
+        WORKFLOW_FILE.write_text(json.dumps({"station": station, "template": str(template_path)}), encoding="utf-8")
+        return {"ok": True, "log": log, "station": api_station()}
+    finally:
+        WORKFLOW_LOCK.release()
+
+
+@app.post("/api/station/presentation")
+def api_station_presentation(request: Request):
+    """Write safe mapped entries to a fresh template copy."""
+    if request.headers.get("origin") not in (None, "http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:8800", "http://localhost:8800"):
+        return JSONResponse({"error": "This local operation must come from the Gluth app."}, status_code=403)
+    if not WORKFLOW_LOCK.acquire(blocking=False):
+        return JSONResponse({"error": "A station job is already running."}, status_code=409)
+    try:
+        if not WORKFLOW_FILE.exists():
+            return JSONResponse({"error": "Build a draft mapping first."}, status_code=400)
+        workflow = json.loads(WORKFLOW_FILE.read_text(encoding="utf-8"))
+        template = Path(workflow["template"])
+        if not template.is_file():
+            return JSONResponse({"error": "The draft template is missing. Build the mapping again."}, status_code=400)
+        output = OUT / f"Stationsakte_{uuid.uuid4().hex}.pptx"
+        ok, log = _run_stage(str(HERE / "akte_schreiben.py"),
+                             "--vorlage", str(template), "--station", workflow["station"],
+                             "--aus", str(output), "--nur-sichere")
+        if not ok:
+            return JSONResponse({"error": "PowerPoint generation failed.", "log": log}, status_code=500)
+        workflow["output"] = output.name
+        WORKFLOW_FILE.write_text(json.dumps(workflow), encoding="utf-8")
+        return {"ok": True, "filename": output.name, "log": log, "station": api_station()}
+    finally:
+        WORKFLOW_LOCK.release()
+
+
+@app.get("/api/station/download/{kind}")
+def api_station_download(kind: str):
+    if kind == "review":
+        path = OUT / "zuordnung.xlsx"
+    elif kind == "presentation":
+        workflow = json.loads(WORKFLOW_FILE.read_text(encoding="utf-8")) if WORKFLOW_FILE.exists() else None
+        if workflow:
+            path = OUT / workflow.get("output", "missing")
+        else:
+            outputs = sorted(OUT.glob("Stationsakte_*.pptx"),
+                             key=lambda p: p.stat().st_mtime, reverse=True)
+            path = outputs[0] if outputs else OUT / "missing"
+    else:
+        return JSONResponse({"error": "unknown download"}, status_code=404)
+    if not path.is_file():
+        return JSONResponse({"error": "file not generated yet"}, status_code=404)
+    return FileResponse(path, filename=path.name)
+
+
 @app.get("/")
 def root():
+    built = FRONTEND_DIST / "index.html"
+    if built.exists():
+        return FileResponse(built, headers={"Cache-Control": "no-store"})
     if UI_FILE.exists():
         # never cache the UI — otherwise edits silently don't appear
         return FileResponse(UI_FILE, headers={
@@ -348,3 +520,8 @@ def root():
             "Pragma": "no-cache",
         })
     return {"hint": "drop the prototype at pipeline/ui.html, or use /api/*"}
+
+
+if FRONTEND_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"),
+              name="frontend-assets")
