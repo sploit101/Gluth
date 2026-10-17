@@ -32,6 +32,8 @@ RRF_K = 60  # standard Reciprocal Rank Fusion constant
 
 @lru_cache(maxsize=1)
 def load_chunks() -> list[dict]:
+    if not CHUNKS.exists():
+        return []
     with CHUNKS.open(encoding="utf-8") as f:
         return [json.loads(line) for line in f]
 

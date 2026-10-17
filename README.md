@@ -1,5 +1,9 @@
 # Gluth RFQ — local retrieval pipeline
 
+For the current station file workflow on macOS and Windows, start with
+[`QUICKSTART.md`](QUICKSTART.md). The older `pipeline/` directory is retained for
+reference; the working scripts and `run.py` are at the repository root.
+
 Runs entirely on one laptop. **No LLM anywhere in this codebase.** No API keys,
 no cloud calls, nothing leaves the machine. Built to be useful during the
 two-week hold on the AI component — and to be the foundation the AI part sits

@@ -13,6 +13,7 @@ No LLM, no network. Deterministic.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -22,7 +23,7 @@ from pathlib import Path
 #claude 
 SKIP_DIRS = {"pipeline", ".venv", "venv", "env", ".env", ".git",
              "node_modules", "__pycache__", "site-packages",
-             ".idea", ".vscode", "out"}
+             ".idea", ".vscode", "out", "_uploads"}
 
 def is_junk_path(rel) -> bool:
     if SKIP_DIRS & set(rel.parts):
@@ -31,7 +32,7 @@ def is_junk_path(rel) -> bool:
 #
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent
 OUT = Path(__file__).resolve().parent / "out"
 
 # Files that are never content.
@@ -66,10 +67,11 @@ def derive_meta(path: Path) -> dict:
     parts = rel.parts
 
     project_no, project_name = "", ""
-    if parts:
-        m = PROJECT_RE.match(parts[0])
+    for part in parts[:-1]:
+        m = PROJECT_RE.match(part)
         if m:
             project_no, project_name = m.group(1), m.group(2)
+            break
 
     phase_no, phase_name = "", ""
     for p in parts:
@@ -172,10 +174,27 @@ def extract_msg(path: Path):
 
 
 def extract_doc(path: Path):
-    """Legacy Word .doc via macOS textutil (built in, no install)."""
+    """Legacy Word .doc via textutil, LibreOffice, or antiword."""
     import subprocess
-    r = subprocess.run(
-        ["textutil", "-convert", "txt", "-stdout", str(path)],
+    import shutil
+    import tempfile
+
+    if shutil.which("textutil"):
+        cmd = ["textutil", "-convert", "txt", "-stdout", str(path)]
+    elif shutil.which("antiword"):
+        cmd = ["antiword", str(path)]
+    elif shutil.which("soffice"):
+        with tempfile.TemporaryDirectory(prefix="gluth_doc_") as tmp:
+            cmd = ["soffice", "--headless", "--convert-to",
+                   "txt:Text (encoded):UTF8", "--outdir", tmp, str(path)]
+            r = subprocess.run(cmd, capture_output=True, timeout=60)
+            converted = Path(tmp) / (path.stem + ".txt")
+            if r.returncode != 0 or not converted.exists():
+                raise RuntimeError("LibreOffice could not convert legacy .doc")
+            return [("", converted.read_text(encoding="utf-8", errors="replace"))]
+    else:
+        raise RuntimeError("Legacy .doc needs LibreOffice, antiword, or macOS textutil")
+    r = subprocess.run(cmd,
         capture_output=True, timeout=60)
     if r.returncode != 0:
         raise RuntimeError((r.stderr or b"").decode("utf-8", "replace")[:160]
@@ -369,6 +388,13 @@ def load_ocr_sidecars() -> dict[str, list]:
 
 
 def main():
+    ap = argparse.ArgumentParser(description="Extract customer documents into the local corpus")
+    ap.add_argument("--input", type=Path, default=ROOT / "sources",
+                    help="document folder inside this checkout (default: sources)")
+    args = ap.parse_args()
+    input_dir = args.input.resolve()
+    if not input_dir.is_dir() or not input_dir.is_relative_to(ROOT):
+        ap.error("--input must be an existing folder inside the repository")
     OUT.mkdir(parents=True, exist_ok=True)
     manifest, chunk_rows = [], []
     ocr_text = load_ocr_sidecars()
@@ -376,11 +402,12 @@ def main():
         print(f"Found OCR sidecars for {len(ocr_text)} files\n", flush=True)
     t0 = time.time()
 
-    files = [p for p in ROOT.rglob("*") if p.is_file() and ".git" not in p.parts]
-    #weg wegen claude :files = [p for p in files if "pipeline" not in p.relative_to(ROOT).parts]
-    files = [p for p in files if not is_junk_path(p.relative_to(ROOT))]
+    files = [p for p in input_dir.rglob("*") if p.is_file()]
+    files = [p for p in files if not is_junk_path(p.relative_to(input_dir))]
     files.sort()
-    print(f"Scanning {len(files)} files under {ROOT}\n", flush=True)
+    if not files:
+        ap.error(f"no files in {input_dir}; add customer documents first")
+    print(f"Scanning {len(files)} files under {input_dir}\n", flush=True)
 
     for path in files:
         suffix = path.suffix.lower()
@@ -424,21 +451,27 @@ def main():
         row["chars"] = total_chars
         row["pages"] = len(pages)
 
-        if (suffix == ".pdf" and pages
-                and total_chars / max(len(pages), 1) < SCAN_CHARS_PER_PAGE):
-            if rel in ocr_text:
-                # scanned, but ocr.py already recovered the text
-                pages = ocr_text[rel]
-                total_chars = sum(len(t) for _, t in pages)
-                row["chars"] = total_chars
-                row["pages"] = len(pages)
-                row["ocr"] = True
-            else:
-                row["status"] = "needs_ocr"
-                row["reason"] = (f"scanned PDF — "
-                                 f"{total_chars // max(len(pages),1)} chars/page")
-                manifest.append(row)
-                continue
+        if suffix == ".pdf" and pages:
+            # Check each image-bearing page. A text average for the whole PDF
+            # misses scans interleaved with searchable pages.
+            import pymupdf
+            with pymupdf.open(path) as doc:
+                scanned = {str(i) for i, page in enumerate(doc, 1)
+                           if page.get_images(full=True)
+                           and len(pages[i - 1][1].strip()) < SCAN_CHARS_PER_PAGE}
+            if scanned:
+                if rel in ocr_text:
+                    recovered = {str(p): t for p, t in ocr_text[rel]}
+                    pages = [(p, recovered.get(str(p), t) if str(p) in scanned else t)
+                             for p, t in pages]
+                    total_chars = sum(len(t) for _, t in pages)
+                    row["chars"] = total_chars
+                    row["ocr"] = True
+                else:
+                    row["status"] = "needs_ocr"
+                    row["reason"] = f"image-only pages: {', '.join(sorted(scanned))}"
+                    manifest.append(row)
+                    continue
         if total_chars == 0:
             row["status"] = "empty"; row["reason"] = "no text found"
             manifest.append(row); continue

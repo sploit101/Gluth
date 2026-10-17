@@ -13,6 +13,7 @@ fastembed_cache/
 # Niemals committen: enthaelt Text aus vertraulichen Kundendokumenten.
 # ---------------------------------------------------------------------------
 out/
+sources/
 vectors/
 *.jsonl
 

@@ -7,8 +7,10 @@ extract-msg>=0.56
 py7zr>=1.1
 
 # OCR (macOS Vision — on-device, no model download)
-pyobjc-framework-Vision>=12.0
-pyobjc-framework-Quartz>=12.0
+pyobjc-framework-Vision>=12.0; sys_platform == "darwin"
+pyobjc-framework-Quartz>=12.0; sys_platform == "darwin"
+pytesseract>=0.3.13; sys_platform != "darwin"
+Pillow>=10; sys_platform != "darwin"
 
 # Retrieval
 bm25s>=0.3
@@ -17,4 +19,5 @@ fastembed>=0.8
 
 # API
 fastapi>=0.141
+python-multipart>=0.0.20
 uvicorn[standard]>=0.52
