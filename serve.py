@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import json
 import asyncio
+import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -43,6 +45,45 @@ WORKFLOW_LOCK = threading.Lock()
 UI_FILE = HERE / "ui.html"
 FRONTEND_DIST = HERE / "frontend" / "dist"
 VENDOR = HERE / "vendor"          # local copies of CSS/JS — no internet needed
+
+
+ALLOWED_ORIGINS = (None, "http://127.0.0.1:5173", "http://localhost:5173",
+                   "http://127.0.0.1:8800", "http://localhost:8800")
+APPROVALS_MAX_BYTES = 10 * 1024 * 1024
+
+
+def _origin_ok(request: Request) -> bool:
+    """Same rule as before, in one place: only the local app may change files."""
+    return request.headers.get("origin") in ALLOWED_ORIGINS
+
+
+def _origin_denied() -> JSONResponse:
+    return JSONResponse({"error": "This local operation must come from the Gluth app."},
+                        status_code=403)
+
+
+def _read_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _mapping_rows() -> list[dict]:
+    mapping = OUT / "zuordnung.jsonl"
+    if not mapping.exists():
+        return []
+    with mapping.open(encoding="utf-8") as stream:
+        return [json.loads(line) for line in stream if line.strip()]
+
+
+def _approval_summary(path: Path, mappings: list[dict]) -> dict:
+    """Count ja/nein in a reviewed sheet. Uses the writer's own reader, so the
+    website and the PowerPoint writer always agree on what counts."""
+    import akte_schreiben
+    approvals, error = akte_schreiben.freigaben_laden(path, mappings)
+    values = list(approvals.values())
+    return {"error": error, "yes": values.count("ja"), "no": values.count("nein")}
 
 app = FastAPI(title="Gluth RFQ — local retrieval API")
 app.add_middleware(
@@ -355,18 +396,18 @@ def api_specdiff(a: str, b: str, limit: int = 25, numeric: bool = False):
 @app.get("/api/station")
 def api_station():
     """Read the latest locally generated mapping and station output."""
-    mapping = OUT / "zuordnung.jsonl"
-    rows = []
-    if mapping.exists():
-        with mapping.open(encoding="utf-8") as stream:
-            rows = [json.loads(line) for line in stream if line.strip()]
-    workflow = json.loads(WORKFLOW_FILE.read_text(encoding="utf-8")) if WORKFLOW_FILE.exists() else None
+    rows = _mapping_rows()
+    workflow = _read_json(WORKFLOW_FILE)
     outputs = sorted(OUT.glob("Stationsakte_*.pptx"),
                      key=lambda path: path.stat().st_mtime, reverse=True)
     latest = (OUT / workflow["output"] if workflow and workflow.get("output") else None)
     if workflow is None:
         latest = next((p for p in outputs if p.name != "Stationsakte_gefuellt.pptx"),
                       outputs[0] if outputs else None)
+    approval_path = Path(workflow["approval_path"]) if workflow and workflow.get("approval_path") else None
+    write_counts = _read_json(OUT / "schreiben_zahlen.json")
+    if not latest or not write_counts or write_counts.get("ausgabe") != latest.name:
+        write_counts = None
     return {
         "count": len(rows),
         "review_count": sum(bool(row.get("pruefen")) for row in rows),
@@ -375,14 +416,24 @@ def api_station():
         "has_review_sheet": (OUT / "zuordnung.xlsx").exists(),
         "latest_output": latest.name if latest and latest.is_file() else None,
         "draft_ready": WORKFLOW_FILE.exists(),
+        "mapping_counts": _read_json(OUT / "zuordnung_zahlen.json"),
+        "write_counts": write_counts,
+        "approvals": ({"file": approval_path.name, **_approval_summary(approval_path, rows)}
+                      if approval_path and approval_path.is_file() else None),
     }
 
 
 def _run_stage(*args: str) -> tuple[bool, str]:
     try:
+        # Windows gives background processes an old code page (cp1252). A
+        # script that prints a symbol such as "✗" or a file name with special
+        # characters then crashes on its own message. UTF-8 for every stage
+        # (inherited by run.py's children) avoids that; nothing else changes.
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
         result = subprocess.run(
             [sys.executable, *args], cwd=HERE, capture_output=True,
-            text=True, errors="replace", timeout=600,
+            text=True, encoding="utf-8", errors="replace", timeout=600,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return False, "Generation timed out after 10 minutes."
@@ -412,19 +463,22 @@ async def api_station_draft(
     documents: list[UploadFile] | None = File(None),
 ):
     """Create a review mapping from uploaded files or the existing local corpus."""
-    if request.headers.get("origin") not in (None, "http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:8800", "http://localhost:8800"):
-        return JSONResponse({"error": "This local operation must come from the Gluth app."}, status_code=403)
+    if not _origin_ok(request):
+        return _origin_denied()
     station = station.strip()
     if not station or len(station) > 120:
         return JSONResponse({"error": "Enter a station name (up to 120 characters)."}, status_code=400)
     if not WORKFLOW_LOCK.acquire(blocking=False):
         return JSONResponse({"error": "A station job is already running."}, status_code=409)
+    run_id = uuid.uuid4().hex
+    success = False
+    uploaded_sources = SOURCES / "_uploads" / run_id
+    uploaded_template = OUT / "uploads" / run_id
     try:
         uploads = documents or []
         if len(uploads) > 20:
             return JSONResponse({"error": "Upload at most 20 documents at a time."}, status_code=400)
-        run_id = uuid.uuid4().hex
-        template_path = OUT / "uploads" / run_id / "template.pptx"
+        template_path = uploaded_template / "template.pptx"
         if template:
             if Path(template.filename or "").suffix.lower() != ".pptx":
                 return JSONResponse({"error": "The template must be a .pptx file."}, status_code=400)
@@ -436,17 +490,21 @@ async def api_station_draft(
                 return JSONResponse({"error": "Choose a PowerPoint template."}, status_code=400)
         input_path = SOURCES
         if uploads:
-            input_path = SOURCES / "_uploads" / run_id
+            input_path = uploaded_sources
             allowed = {".pdf", ".docx", ".doc", ".txt", ".md", ".xlsx", ".xlsm", ".pptx"}
             names: set[str] = set()
             for upload in uploads:
-                name = Path(upload.filename or "").name
-                if not name or name in names or Path(name).suffix.lower() not in allowed:
+                name = upload.filename or ""
+                if (not name or name != Path(name).name or "\\" in name or
+                        name in names or Path(name).suffix.lower() not in allowed):
                     return JSONResponse({"error": "Use unique PDF, Word, text, spreadsheet, or PowerPoint source filenames."}, status_code=400)
                 names.add(name)
                 if not await _save_upload(upload, input_path / name, 30 * 1024 * 1024):
                     return JSONResponse({"error": f"{name} is empty or larger than 30 MB."}, status_code=400)
-        elif not SOURCES.is_dir() or not any(path.is_file() for path in SOURCES.rglob("*")):
+        elif not SOURCES.is_dir() or not any(
+            path.is_file() and "_uploads" not in path.relative_to(SOURCES).parts
+            for path in SOURCES.rglob("*")
+        ):
             return JSONResponse({"error": "Upload source documents first."}, status_code=400)
         WORKFLOW_FILE.unlink(missing_ok=True)
         args = [str(HERE / "run.py"), "--input", str(input_path),
@@ -457,16 +515,20 @@ async def api_station_draft(
         if not ok:
             return JSONResponse({"error": "Draft generation failed.", "log": log}, status_code=500)
         WORKFLOW_FILE.write_text(json.dumps({"station": station, "template": str(template_path)}), encoding="utf-8")
+        success = True
         return {"ok": True, "log": log, "station": api_station()}
     finally:
+        if not success:
+            shutil.rmtree(uploaded_sources, ignore_errors=True)
+            shutil.rmtree(uploaded_template, ignore_errors=True)
         WORKFLOW_LOCK.release()
 
 
 @app.post("/api/station/presentation")
-def api_station_presentation(request: Request):
+def api_station_presentation(request: Request, include_review: str = Form("0")):
     """Write safe mapped entries to a fresh template copy."""
-    if request.headers.get("origin") not in (None, "http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:8800", "http://localhost:8800"):
-        return JSONResponse({"error": "This local operation must come from the Gluth app."}, status_code=403)
+    if not _origin_ok(request):
+        return _origin_denied()
     if not WORKFLOW_LOCK.acquire(blocking=False):
         return JSONResponse({"error": "A station job is already running."}, status_code=409)
     try:
@@ -477,9 +539,20 @@ def api_station_presentation(request: Request):
         if not template.is_file():
             return JSONResponse({"error": "The draft template is missing. Build the mapping again."}, status_code=400)
         output = OUT / f"Stationsakte_{uuid.uuid4().hex}.pptx"
-        ok, log = _run_stage(str(HERE / "akte_schreiben.py"),
-                             "--vorlage", str(template), "--station", workflow["station"],
-                             "--aus", str(output), "--nur-sichere")
+        writer_args = [str(HERE / "akte_schreiben.py"),
+                       "--vorlage", str(template), "--station", workflow["station"],
+                       "--aus", str(output)]
+        if workflow.get("approval_path"):
+            approval_path = Path(workflow["approval_path"])
+            if not approval_path.is_file():
+                return JSONResponse({"error": "The reviewed sheet is missing. Upload it again."}, status_code=400)
+            writer_args += ["--freigabe", str(approval_path)]
+        # Default stays conservative: only unflagged or approved entries.
+        # With the switch, flagged entries are written too - each one carries
+        # a visible PRUEFEN marker in the deck.
+        if include_review.strip() != "1":
+            writer_args.append("--nur-sichere")
+        ok, log = _run_stage(*writer_args)
         if not ok:
             return JSONResponse({"error": "PowerPoint generation failed.", "log": log}, status_code=500)
         workflow["output"] = output.name
@@ -489,8 +562,62 @@ def api_station_presentation(request: Request):
         WORKFLOW_LOCK.release()
 
 
+@app.post("/api/station/review")
+async def api_station_review_upload(request: Request, sheet: UploadFile | None = File(None)):
+    """Store a reviewed zuordnung.xlsx (column Freigabe = ja/nein) for the writer."""
+    if not _origin_ok(request):
+        return _origin_denied()
+    if sheet is None or Path(sheet.filename or "").suffix.lower() != ".xlsx":
+        return JSONResponse({"error": "The reviewed sheet must be an .xlsx file."}, status_code=400)
+    if not WORKFLOW_LOCK.acquire(blocking=False):
+        return JSONResponse({"error": "A station job is already running."}, status_code=409)
+    temporary = OUT / "uploads" / f"review_{uuid.uuid4().hex}.xlsx"
+    try:
+        workflow = _read_json(WORKFLOW_FILE)
+        if not workflow:
+            return JSONResponse({"error": "Build a draft mapping before uploading its review sheet."}, status_code=400)
+        if not await _save_upload(sheet, temporary, APPROVALS_MAX_BYTES):
+            return JSONResponse({"error": "The sheet is empty or larger than 10 MB."}, status_code=400)
+        summary = _approval_summary(temporary, _mapping_rows())
+        if summary["error"]:
+            return JSONResponse({"error": "This is not a usable review sheet: " + summary["error"]},
+                                status_code=400)
+        if summary["yes"] + summary["no"] == 0:
+            return JSONResponse({"error": "No ja/nein found in the Freigabe column."}, status_code=400)
+        retained = OUT / "uploads" / f"reviewed_{uuid.uuid4().hex}.xlsx"
+        temporary.replace(retained)
+        workflow["approval_path"] = str(retained)
+        workflow.pop("output", None)
+        WORKFLOW_FILE.write_text(json.dumps(workflow), encoding="utf-8")
+        return {"ok": True, "approvals": {"file": retained.name, **summary},
+                "station": api_station()}
+    finally:
+        temporary.unlink(missing_ok=True)
+        WORKFLOW_LOCK.release()
+
+
+@app.delete("/api/station/review")
+def api_station_review_delete(request: Request):
+    """Stop applying approvals to this draft without deleting the user's sheet."""
+    if not _origin_ok(request):
+        return _origin_denied()
+    if not WORKFLOW_LOCK.acquire(blocking=False):
+        return JSONResponse({"error": "A station job is already running."}, status_code=409)
+    try:
+        workflow = _read_json(WORKFLOW_FILE)
+        if workflow:
+            workflow.pop("approval_path", None)
+            workflow.pop("output", None)
+            WORKFLOW_FILE.write_text(json.dumps(workflow), encoding="utf-8")
+        return {"ok": True, "station": api_station()}
+    finally:
+        WORKFLOW_LOCK.release()
+
+
 @app.get("/api/station/download/{kind}")
-def api_station_download(kind: str):
+def api_station_download(kind: str, request: Request):
+    if not _origin_ok(request):
+        return _origin_denied()
     if kind == "review":
         path = OUT / "zuordnung.xlsx"
     elif kind == "presentation":

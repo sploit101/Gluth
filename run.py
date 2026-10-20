@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -14,8 +15,12 @@ OUT = HERE / "out"
 
 def run(script: str, *args: str) -> None:
     print(f"\n>>> {script}", flush=True)
+    # UTF-8 output for every stage: on Windows a piped or background stage
+    # otherwise uses cp1252 and crashes when it prints a symbol or a file
+    # name with special characters.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
     subprocess.run([sys.executable, str(HERE / script), *args],
-                   cwd=HERE, check=True)
+                   cwd=HERE, check=True, env=env)
 
 
 def main() -> int:
@@ -32,12 +37,16 @@ def main() -> int:
                     help="write a PowerPoint copy after reviewing out/zuordnung.xlsx")
     ap.add_argument("--include-review", action="store_true",
                     help="also write mappings flagged for human review (requires --write)")
+    ap.add_argument("--freigabe", type=Path,
+                    help="reviewed mapping spreadsheet for --write; must match this run")
     args = ap.parse_args()
 
     if args.write and not (args.template and args.station):
         ap.error("--write requires --template and --station")
     if args.include_review and not args.write:
         ap.error("--include-review requires --write")
+    if args.freigabe and not args.write:
+        ap.error("--freigabe requires --write")
     if args.template and not args.station:
         ap.error("--template requires a human-supplied --station")
     if args.template and not args.template.is_file():
@@ -67,6 +76,8 @@ def main() -> int:
                                "--station", args.station, "--aus", str(output)]
                 if not args.include_review:
                     writer_args.append("--nur-sichere")
+                if args.freigabe:
+                    writer_args += ["--freigabe", str(args.freigabe)]
                 run("akte_schreiben.py", *writer_args)
     except subprocess.CalledProcessError as exc:
         print(f"Stage failed: {exc.cmd[1]} (exit {exc.returncode})", file=sys.stderr)

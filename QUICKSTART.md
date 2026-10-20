@@ -42,9 +42,16 @@ python run.py --template path/to/Stationsakte.pptx --station "Station 20 Abisoli
 ```
 
 This writes `out/zuordnung.xlsx` for review. Yellow rows need human checking.
-When the mapping is acceptable, run the same command with `--write`. By
-default, review flagged mappings are excluded from the PowerPoint. To include
-them after checking, add `--include-review`. The copied station file gets a
+Enter `ja` or `nein` in the `Freigabe` column and save a reviewed copy.
+`ja` includes that exact mapping as human approved; `nein` excludes it.
+To use these decisions from the CLI, write the current mapping with
+`python akte_schreiben.py --vorlage path/to/Stationsakte.pptx --station
+"Station 20 Abisolieren" --freigabe path/to/reviewed.xlsx --nur-sichere`.
+The reviewed sheet must match every row of the current mapping; changing a
+source, station, or rule means downloading a new sheet. Without a reviewed
+sheet, `run.py --write` creates a copy containing only unflagged mappings.
+`--include-review` writes flagged entries with a visible `PRUEFEN` marker.
+The copied station file gets a
 unique name under `out/`; the template is not modified. A matching
 `*_schreibprotokoll.csv` records its changes and sources.
 
@@ -63,10 +70,15 @@ optionally select source documents and a `.pptx` template, then click **Build
 draft mapping**. If no files are selected, the app uses `sources/` and the
 local example template at `out/vorlage_stationsakte.pptx`. Uploaded source files
 are stored under ignored `sources/_uploads/`, templates under `out/uploads/`,
-and both are processed locally. Download the review
-sheet and check the mappings; **Generate PowerPoint** writes only entries that
-were not flagged for review. Download and inspect the finished slide deck.
-Spreadsheet corrections are not yet imported into the mapping automatically.
+and both are processed locally. Download the review sheet, enter `ja` or `nein`
+in the `Freigabe` column, then upload it using **Use reviewed sheet**. By
+default, **Generate PowerPoint** writes only unflagged or approved entries.
+You can explicitly include entries that still need review; they carry a
+`PRUEFEN` marker. Download and inspect the finished slide deck. Text edits in
+the spreadsheet are not imported. Each new draft needs its own reviewed sheet.
+Uploaded source files and templates remain on disk to support source previews;
+remove old runs from `sources/_uploads/` and `out/uploads/` when no longer
+needed. Failed uploads are cleaned up automatically.
 
 For live frontend development, install Node.js 20+ and run `npm install` once
 inside `frontend/`. Then run `python dev.py` from the repository root using

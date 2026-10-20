@@ -172,9 +172,10 @@ MIN_LAENGE = 40
 # Die Regeln. Je Regel: Name, Zielfeld (Folienart, Feld-Kennung), Test,
 # Sicherheit. Reihenfolge ist bedeutsam: spezifische Regeln vor allgemeinen.
 #
-# Ein Satz kann in mehrere Felder gehen - "Toleranz der Abisolierlaenge
-# +/- 0,2 mm" gehoert in die Faehigkeitstabelle UND in die ausfuehrliche
-# Aufgabenbeschreibung. Das ist gewollt.
+# Ein Satz kann in die Faehigkeitstabelle UND in ein Textfeld gehen -
+# "Toleranz der Abisolierlaenge +/- 0,2 mm" gehoert in die Tabelle (als
+# kurzer Auszug) und in die Aufgabenbeschreibung (als ganzer Satz). Unter den
+# TEXTfeldern bekommt ihn aber nur eines, siehe TEXTFELD_VORRANG.
 # ---------------------------------------------------------------------------
 
 VERFAHREN = re.compile(
@@ -228,6 +229,105 @@ KEINE_AUFGABE = re.compile(
     r"insurance|versicherung|training\s+courses)\b", re.I)
 
 
+# Saetze ueber Dokumente, Termine und Lieferumfang. Sie enthalten oft die
+# Woerter "inspection", "calibration" oder "MFU", beschreiben aber keinen
+# Prozess und kein Kalibrierteil, sondern etwas, das geliefert oder
+# nachgewiesen werden muss. Beispiel aus dem echten Lauf: ein Satz ueber ein
+# Pruefzertifikat im Lieferumfang stand als "Prozess" in der Faehigkeitstabelle.
+DOKUMENT = re.compile(
+    r"\b(certificat\w*|zertifikat\w*|checklist\w*|schedule|terminplan|"
+    r"included\s+in\s+the\s+delivery|lieferumfang|spare\s+parts|"
+    r"ersatzteil\w*|acceptance\s+run|machine\s+acceptance|"
+    r"documentation|dokumentation)\b", re.I)
+
+PRUEFWORT = re.compile(
+    r"\b(monitor\w*|check\w*|inspect\w*|test\w*|"
+    r"[uü]berwach\w*|pr[uü]f\w*|mess\w*)\b", re.I)
+
+
+def _stamm(wort: str) -> str:
+    return wort.lower()[:4]
+
+
+def prozess_und_pruefung(t: str) -> bool:
+    """
+    Prozessname UND ein Pruefwort - aber zwei VERSCHIEDENE Woerter.
+
+    Vorher genuegte "Inspection certificate ...", weil "inspection" zugleich
+    als Prozessname und als Pruefwort zaehlte. Jetzt muss das Pruefwort ein
+    anderes Wort mit anderem Wortstamm sein ("crimps ... monitoring" ja,
+    "testing ... test" nein).
+    """
+    # Paarweise: irgendein Prozesswort P und irgendein Pruefwort C, die sich
+    # nicht ueberlappen und verschiedene Wortstaemme haben. So zaehlt
+    # "inspection ... vision system" (C = inspection, P = vision system),
+    # aber nicht "Inspection certificate" (nur ein einziges Wort).
+    prozesse = list(PROZESS_NAME.finditer(t))
+    pruefungen = list(PRUEFWORT.finditer(t))
+    for p in prozesse:
+        ps, pe = p.span()
+        for c in pruefungen:
+            cs, ce = c.span()
+            if cs < pe and ps < ce:
+                continue
+            if _stamm(p.group(0)) != _stamm(c.group(0)):
+                return True
+    return False
+
+
+def auszug(t: str, muster: re.Pattern, vorlauf: int = 0) -> str:
+    """
+    Woertlicher Ausschnitt fuer eine Tabellenzelle.
+
+    Eine 3,9 cm breite Zelle vertraegt keinen ganzen Satz. Statt eines
+    maschinell umformulierten Werts ("GE 60.0 mm") steht hier der Original-
+    wortlaut der Fundstelle, bei Bedarf mit etwas Text davor, damit klar ist,
+    worauf sich der Wert bezieht. Jeder Ausschnitt ist ein exaktes Teilstueck
+    des Satzes - es wird nichts umformuliert. Mehrere Fundstellen werden mit
+    " | " getrennt.
+    """
+    teile, gesehen = [], set()
+    for m in muster.finditer(t):
+        a, b = m.span()
+        if vorlauf:
+            start = max(0, a - vorlauf)
+            if start > 0:
+                leer = t.find(" ", start)
+                start = leer + 1 if 0 <= leer < a else start
+            stueck = t[start:b].strip()
+            if start > 0:
+                stueck = "…" + stueck
+        else:
+            stueck = t[a:b].strip()
+        schluessel = stueck.lower()
+        if stueck and schluessel not in gesehen:
+            gesehen.add(schluessel)
+            teile.append(stueck)
+    return " | ".join(teile)
+
+
+# Wenn ein Satz zu mehreren TEXTfeldern passt, bekommt ihn nur das
+# spezifischste. Vorher stand derselbe Satz auf zwei Folien (z. B. unter
+# "Aufgabenstellung" und unter "Stationsbeschreibung"). Die anderen passenden
+# Felder werden in der Spalte "Auch passend" vermerkt - es geht nichts
+# verloren, aber in der Akte steht jeder Satz nur einmal.
+#
+# Nicht betroffen: die Faehigkeitstabelle (dort steht nur ein kurzer Auszug)
+# und das Varianten-Feld (dort steht nur "Ja", der Satz ist der Beleg).
+TEXTFELD_VORRANG = {
+    "kalibrieren": 1,
+    "stationsinhalt": 2,
+    "aufgabe_ausfuehrlich": 3,
+}
+
+# Welche Regel liefert welchen Auszug fuer die Tabellenzelle
+AUSZUG_JE_REGEL = {
+    "faehigkeit_verfahren": lambda t: auszug(t, VERFAHREN),
+    "faehigkeit_kennwert": lambda t: auszug(t, KENNWERT),
+    "faehigkeit_toleranz": lambda t: auszug(t, TOLERANZ, vorlauf=35),
+}
+
+
 def regeln(kat: dict) -> list[tuple]:
     """
     Liefert die Regelliste. kat ist der Zielfeld-Katalog, damit jede Regel
@@ -244,7 +344,8 @@ def regeln(kat: dict) -> list[tuple]:
 
     # --- Faehigkeitstabelle: der staerkste Befund der Pruefung
     add("faehigkeit_verfahren", "Fähigkeitstabelle", "tab:Faehigkeit:Verfahren",
-        lambda t, r: bool(VERFAHREN.search(t)), "hoch")
+        lambda t, r: bool(VERFAHREN.search(t)) and not DOKUMENT.search(t),
+        "hoch")
 
     add("faehigkeit_kennwert", "Fähigkeitstabelle", "tab:Faehigkeit:Kennwert",
         lambda t, r: bool(KENNWERT.search(t)), "hoch")
@@ -260,12 +361,10 @@ def regeln(kat: dict) -> list[tuple]:
     # Prozessbezeichnungen. Ohne diese Ausnahme landete jeder MSA-Satz
     # zusaetzlich in der Spalte "Prozess".
     add("faehigkeit_prozess", "Fähigkeitstabelle", "tab:Faehigkeit:Prozess",
-        lambda t, r: (bool(PROZESS_NAME.search(t))
+        lambda t, r: (prozess_und_pruefung(t)
                       and not VERFAHREN.search(t)
-                      and not re.search(r"measur\w*\s+(equipment|system)", t, re.I)
-                      and bool(
-            re.search(r"\b(monitor\w*|check\w*|inspect\w*|test\w*|"
-                      r"[uü]berwach\w*|pr[uü]f\w*|mess\w*)\b", t, re.I))),
+                      and not DOKUMENT.search(t)
+                      and not re.search(r"measur\w*\s+(equipment|system)", t, re.I)),
         "mittel")
 
     # --- Aufgabenbeschreibung: lange verbindliche Saetze, die wirklich die
@@ -274,6 +373,7 @@ def regeln(kat: dict) -> list[tuple]:
         lambda t, r: (len(t) > 120
                       and r.get("binding") in ("MUSS", "VERBOT")
                       and not KEINE_AUFGABE.search(t)
+                      and not DOKUMENT.search(t)
                       and bool(PROZESS_NAME.search(t))),
         "hoch")
 
@@ -286,7 +386,10 @@ def regeln(kat: dict) -> list[tuple]:
 
     # --- Kalibrieren und Einrichten
     add("kalibrieren", "Kalibrier-/Einrichtteile", "ph11",
-        lambda t, r: bool(KALIBRIEREN.search(t)) and len(t) > 60, "mittel")
+        lambda t, r: (bool(KALIBRIEREN.search(t)) and len(t) > 60
+                      and not DOKUMENT.search(t)
+                      and not KEINE_AUFGABE.search(t)),
+        "mittel")
 
     # --- Varianten: hier wird kein Satz eingetragen, sondern ein Ja/Nein
     #     belegt. Der Satz ist der Nachweis.
@@ -294,6 +397,29 @@ def regeln(kat: dict) -> list[tuple]:
         lambda t, r: bool(VARIANTE.search(t)), "hoch")
 
     return R
+
+
+SPALTE_FREIGABE = "Freigabe"
+
+
+def freigaben_in_datei(pfad: Path) -> int:
+    """Wie viele Zeilen der Datei haben eine Freigabe eingetragen?"""
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(str(pfad), read_only=True, data_only=True)
+        ws = wb["Zuordnung"] if "Zuordnung" in wb.sheetnames else wb.active
+        zeilen = ws.iter_rows(values_only=True)
+        kopf = [str(x or "").strip() for x in next(zeilen, [])]
+        if SPALTE_FREIGABE not in kopf:
+            wb.close()
+            return 0
+        i = kopf.index(SPALTE_FREIGABE)
+        n = sum(1 for z in zeilen
+                if i < len(z) and str(z[i] or "").strip())
+        wb.close()
+        return n
+    except Exception:
+        return -1           # unbekannt -> der Aufrufer sichert vorsichtshalber
 
 
 def ascii_safe(s) -> str:
@@ -389,6 +515,8 @@ def main() -> int:
     treffer = []
     verworfen = []
     muell, zu_kurz, ohne_feld = 0, 0, 0
+    mehrfach_text = 0           # Textfeld-Treffer, die dem Vorrang weichen
+    ohne_feld_liste = []        # fuer die Pruefung, was die Regeln uebersehen
     gesehen = set()
     signal_zaehler = collections.Counter()
 
@@ -416,7 +544,20 @@ def main() -> int:
                 continue
         if not wohin:
             ohne_feld += 1
+            ohne_feld_liste.append({"text": t, "datei": r["_datei"],
+                                    "seite": r["_seite"],
+                                    "binding": r.get("binding", "")})
             continue
+
+        # Unter den Textfeldern nur das spezifischste behalten
+        text_treffer = [w for w in wohin if w[0] in TEXTFELD_VORRANG]
+        auch_passend = ""
+        if len(text_treffer) > 1:
+            text_treffer.sort(key=lambda w: TEXTFELD_VORRANG[w[0]])
+            weg = text_treffer[1:]
+            auch_passend = ", ".join(f"{w[1]} / {w[2]}" for w in weg)
+            wohin = [w for w in wohin if w not in weg]
+            mehrfach_text += len(weg)
 
         for name, folienart, feld, sicher in wohin:
             schluessel = (folienart, feld,
@@ -454,6 +595,10 @@ def main() -> int:
                 "datei": r["_datei"],
                 "seite": r["_seite"],
                 "text": t,
+                "auszug": (AUSZUG_JE_REGEL[name](t)
+                           if name in AUSZUG_JE_REGEL else ""),
+                "auch_passend": (auch_passend
+                                 if name in TEXTFELD_VORRANG else ""),
                 "req_id": r.get("req_id", ""),
                 "subject_key": r.get("subject_key", ""),
             })
@@ -486,10 +631,13 @@ def main() -> int:
           f"  davon als Muell verworfen   {muell}",
           f"  davon zu kurz weg           {zu_kurz}",
           f"  davon kein passendes Feld   {ohne_feld}",
-          f"  davon zugeordnet            {verwertet} "
+          f"  davon mit passendem Feld    {verwertet} "
           f"({100*verwertet/betrachtet:.0f} %)",
           "",
-          f"  Zuordnungen insgesamt       {len(treffer)}",
+          f"  Eintraege fuer die Akte     {len(treffer)}",
+          "    (ein Satz kann Tabelle + Textfeld bekommen; gleicher Wortlaut",
+          "     aus mehreren Dateien/Seiten zaehlt nur einmal)",
+          f"  Textfeld-Doppel vermieden   {mehrfach_text}",
           f"  davon als 'pruefen' markiert {zu_pruefen} "
           f"({100*zu_pruefen/max(len(treffer),1):.0f} %)",
           f"  Zielfelder im Katalog       {len(kat)}",
@@ -526,6 +674,12 @@ def main() -> int:
 
     OUT.mkdir(exist_ok=True)
     (OUT / "zuordnung_zahlen.txt").write_text("\n".join(L), encoding="utf-8")
+    # maschinenlesbar fuer die Weboberflaeche - nur Zahlen, keine Saetze
+    (OUT / "zuordnung_zahlen.json").write_text(json.dumps({
+        "betrachtet": betrachtet, "muell": muell, "zu_kurz": zu_kurz,
+        "ohne_feld": ohne_feld, "mit_feld": verwertet,
+        "eintraege": len(treffer), "pruefen": zu_pruefen,
+    }, indent=1), encoding="utf-8")
     for z in L:
         print(ascii_safe(z))
 
@@ -543,12 +697,35 @@ def main() -> int:
         return 0
 
     ziel = OUT / "zuordnung.xlsx"
-    try:
-        wb = xlsxwriter.Workbook(str(ziel))
-    except PermissionError:
-        print()
-        print("FEHLER:", ascii_safe(ziel.name), "ist in Excel offen.")
-        return 1
+
+    # Schutz fuer menschliche Arbeit: Wer in der alten zuordnung.xlsx schon
+    # Freigaben eingetragen hat, verliert sie sonst beim naechsten Lauf.
+    # Die alte Datei wird deshalb vorher gesichert.
+    if ziel.exists():
+        anzahl = freigaben_in_datei(ziel)
+        if anzahl:
+            sicherung = OUT / f"zuordnung_freigaben_{datetime.now():%Y%m%d_%H%M%S_%f}.xlsx"
+            try:
+                import shutil
+                shutil.copy2(ziel, sicherung)
+                print()
+                if anzahl > 0:
+                    print(f"HINWEIS: Die alte zuordnung.xlsx enthielt {anzahl} "
+                          f"Freigaben. Gesichert als:")
+                else:
+                    print("HINWEIS: Die alte zuordnung.xlsx konnte nicht auf "
+                          "Freigaben geprueft werden. Vorsichtshalber "
+                          "gesichert als:")
+                print("  ", ascii_safe(sicherung.name))
+                print("   Fuer den Schreiber als out\\zuordnung_geprueft.xlsx "
+                      "speichern.")
+            except OSError as e:
+                print("FEHLER: Sicherung der Freigaben fehlgeschlagen:",
+                      ascii_safe(e))
+                print("Abbruch, damit keine Freigaben verloren gehen.")
+                return 1
+
+    wb = xlsxwriter.Workbook(str(ziel))
 
     kopf = wb.add_format({"bold": True, "bg_color": "#EFEFEF", "border": 1,
                           "text_wrap": True, "valign": "top"})
@@ -558,9 +735,11 @@ def main() -> int:
 
     ws = wb.add_worksheet("Zuordnung")
     spalten = ["Kennung", "Folienart", "Feld", "Feldname", "Prüfen",
+               SPALTE_FREIGABE,
                "Regel", "Verbindlichkeit", "Operator", "Wert", "Einheit",
-               "Station", "Seite", "Wortlaut", "Bemerkung"]
-    breiten = [10, 26, 24, 26, 30, 20, 13, 9, 10, 9, 22, 7, 90, 24]
+               "Station", "Datei", "Seite", "Wortlaut", "Auszug (Tabelle)",
+               "Auch passend", "Bemerkung"]
+    breiten = [10, 26, 24, 26, 30, 12, 20, 13, 9, 10, 9, 22, 34, 7, 90, 30, 30, 24]
     for i, (s, b) in enumerate(zip(spalten, breiten)):
         ws.write(0, i, s, kopf)
         ws.set_column(i, i, b)
@@ -570,27 +749,71 @@ def main() -> int:
         f = warn if z["pruefen"] else zelle
         ws.write_row(n, 0, [
             z["kennung"], z["folienart"], z["feld_id"], z["feldname"],
-            z["pruefen"] or "sicher", z["regel"], z["binding"],
+            z["pruefen"] or "sicher", "",
+            z["regel"], z["binding"],
             z["operator"], z["value"] if z["value"] is not None else "",
-            z["unit"], z["station"], z["seite"], z["text"], "",
+            z["unit"], z["station"], z["datei"], z["seite"], z["text"],
+            z.get("auszug", ""), z.get("auch_passend", ""), "",
         ], f)
-    wb.close()
+    if treffer:
+        sp = spalten.index(SPALTE_FREIGABE)
+        ws.data_validation(1, sp, len(treffer), sp, {
+            "validate": "list", "source": ["ja", "nein"],
+            "input_title": "Freigabe",
+            "input_message": "ja = in die Akte, nein = weglassen, "
+                             "leer = noch nicht entschieden"})
+    try:
+        wb.close()
+    except Exception as e:                       # Datei in Excel geoeffnet
+        print()
+        print("FEHLER:", ascii_safe(ziel.name),
+              "konnte nicht geschrieben werden (in Excel offen?)",
+              ascii_safe(e))
+        return 1
+
+    # Saetze ohne passendes Feld - damit ein Mensch pruefen kann, was die
+    # Regeln uebersehen. Nur so laesst sich die Trefferquote ueberhaupt
+    # schaetzen: Was genommen wurde, sieht man in der Akte; was fehlt, nur hier.
+    oz = OUT / "zuordnung_ohne_feld.xlsx"
+    try:
+        wbo = xlsxwriter.Workbook(str(oz))
+        kopf_wbo = wbo.add_format({"bold": True, "bg_color": "#EFEFEF", "border": 1, "text_wrap": True, "valign": "top"})
+        zelle_wbo = wbo.add_format({"text_wrap": True, "valign": "top", "border": 1})
+        wso = wbo.add_worksheet("Ohne Feld")
+        oz_spalten = ["Gehört in die Akte? (Feld eintragen)", "Verbindlichkeit",
+                      "Datei", "Seite", "Wortlaut"]
+        for i, (sp_, br) in enumerate(zip(oz_spalten, [34, 13, 34, 7, 110])):
+            wso.write(0, i, sp_, kopf_wbo)
+            wso.set_column(i, i, br)
+        wso.freeze_panes(1, 0)
+        wso.autofilter(0, 0, max(len(ohne_feld_liste), 1), len(oz_spalten) - 1)
+        for n, v in enumerate(ohne_feld_liste, start=1):
+            wso.write_row(n, 0, ["", v["binding"], v["datei"], v["seite"],
+                                 v["text"]], zelle_wbo)
+        wbo.close()
+        print()
+        print(f"  {oz}  Saetze ohne Feld - VERTRAULICH")
+    except Exception as e:
+        print("HINWEIS: zuordnung_ohne_feld.xlsx nicht geschrieben:",
+              ascii_safe(e))
 
     if verworfen:
         vz = OUT / "zuordnung_verworfen.xlsx"
         try:
             wbv = xlsxwriter.Workbook(str(vz))
+            kopf_wbv = wbv.add_format({"bold": True, "bg_color": "#EFEFEF", "border": 1, "text_wrap": True, "valign": "top"})
+            zelle_wbv = wbv.add_format({"text_wrap": True, "valign": "top", "border": 1})
             wsv = wbv.add_worksheet("Verworfen")
             for i, (sp, br) in enumerate(zip(
                     ["Signale", "Verbindlichkeit", "Datei", "Seite", "Wortlaut"],
                     [40, 13, 34, 7, 110])):
-                wsv.write(0, i, sp, kopf)
+                wsv.write(0, i, sp, kopf_wbv)
                 wsv.set_column(i, i, br)
             wsv.freeze_panes(1, 0)
             wsv.autofilter(0, 0, len(verworfen), 4)
             for n, v in enumerate(verworfen, start=1):
                 wsv.write_row(n, 0, [v["signale"], v["binding"], v["datei"],
-                                     v["seite"], v["text"]], zelle)
+                                     v["seite"], v["text"]], zelle_wbv)
             wbv.close()
             print()
             print(f"  {vz}  verworfene Saetze - VERTRAULICH")
@@ -603,8 +826,8 @@ def main() -> int:
     print("  out\\zuordnung.jsonl        Eingabe fuer den Schreiber")
     print("  out\\zuordnung.xlsx         mit Wortlauten - VERTRAULICH")
     print()
-    print("Die gelb hinterlegten Zeilen in der Excel sind die, die ein")
-    print("Mensch bestaetigen muss. Spalte 'Bemerkung' ist fuer dich leer.")
+    print("Die gelb hinterlegten Zeilen brauchen eine menschliche Pruefung.")
+    print("Freigabe: ja = bestaetigen, nein = ablehnen, leer = unveraendert.")
     return 0
 
 
