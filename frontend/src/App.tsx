@@ -20,7 +20,10 @@ type SearchResult = { project_no: string; project_name: string; customer: string
 type SearchData = { query: string; mode: string; projects: SearchResult[] }
 type SourceData = { filename: string; page: string; source_path: string; passages: string[] }
 type Mapping = { folienart: string; feld_id: string; feldname: string; regel: string; pruefen: string; station: string; datei: string; seite: string; text: string; kennung: string }
-type Station = { count: number; review_count: number; station: string; mappings: Mapping[]; has_review_sheet: boolean; latest_output: string | null; draft_ready: boolean }
+type MappingCounts = { betrachtet: number; muell: number; zu_kurz: number; ohne_feld: number; mit_feld: number; eintraege: number; pruefen: number }
+type WriteCounts = { ausgabe: string; geschrieben: number; zurueckgehalten: number; nur_sichere: boolean; freigabe_datei: string; freigabe_ja: number; freigabe_nein: number; freigabe_ohne_treffer: number; luecken: number; folien_neu: number }
+type Approvals = { file: string; error: string; yes: number; no: number }
+type Station = { count: number; review_count: number; station: string; mappings: Mapping[]; has_review_sheet: boolean; latest_output: string | null; draft_ready: boolean; mapping_counts?: MappingCounts | null; write_counts?: WriteCounts | null; approvals?: Approvals | null }
 type Drift = { count: number; findings: { kind: string; file?: string; detail?: string; description?: string }[] }
 type Pair = { a: string; b: string }
 
@@ -76,6 +79,9 @@ export default function App() {
   const [stationMessage, setStationMessage] = useState("")
   const [stationError, setStationError] = useState("")
   const [stationLog, setStationLog] = useState("")
+  const [includeReview, setIncludeReview] = useState(false)
+  const [reviewFile, setReviewFile] = useState<File | null>(null)
+  const [reviewInputKey, setReviewInputKey] = useState(0)
 
   const refresh = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -135,6 +141,9 @@ export default function App() {
       if (!response.ok) throw new Error(`${data.error || "Draft failed"}${data.log ? `\n${data.log}` : ""}`)
       if (data.station) setStation(data.station)
       setStationLog(data.log || "")
+      setIncludeReview(false)
+      setReviewFile(null)
+      setReviewInputKey(key => key + 1)
       setStationMessage(`Draft ready: ${data.station?.count ?? 0} mapped entries. Review the cited rows before creating the PowerPoint.`)
       await refresh()
     } catch (err) { setStationError(err instanceof Error ? err.message : "Draft failed") }
@@ -144,13 +153,46 @@ export default function App() {
   async function generatePresentation() {
     setStationBusy(true); setStationError(""); setStationMessage(""); setStationLog("")
     try {
-      const response = await fetch("/api/station/presentation", { method: "POST" })
+      const form = new FormData()
+      form.append("include_review", includeReview ? "1" : "0")
+      const response = await fetch("/api/station/presentation", { method: "POST", body: form })
       const data = await response.json() as { error?: string; log?: string; station?: Station }
       if (!response.ok) throw new Error(`${data.error || "Generation failed"}${data.log ? `\n${data.log}` : ""}`)
       if (data.station) setStation(data.station)
       setStationLog(data.log || "")
-      setStationMessage("PowerPoint created. Download it above and inspect every slide before use.")
+      setStationMessage(includeReview
+        ? "PowerPoint created. Entries marked PRUEFEN still need a human check. Download it above and inspect every slide before use."
+        : "PowerPoint created with unflagged and approved entries only. Held-back proposals are named on the slides. Download it above and inspect every slide before use.")
     } catch (err) { setStationError(err instanceof Error ? err.message : "Generation failed") }
+    finally { setStationBusy(false) }
+  }
+
+  async function uploadReview() {
+    if (!reviewFile) return
+    setStationBusy(true); setStationError(""); setStationMessage(""); setStationLog("")
+    const form = new FormData()
+    form.append("sheet", reviewFile)
+    try {
+      const response = await fetch("/api/station/review", { method: "POST", body: form })
+      const data = await response.json() as { error?: string; approvals?: Approvals; station?: Station }
+      if (!response.ok) throw new Error(data.error || "Upload failed")
+      if (data.station) setStation(data.station)
+      setStationMessage(`Review sheet applied: ${data.approvals?.yes ?? 0} approved (ja), ${data.approvals?.no ?? 0} rejected (nein). Generate the PowerPoint again to use it.`)
+      setReviewFile(null)
+      setReviewInputKey(key => key + 1)
+    } catch (err) { setStationError(err instanceof Error ? err.message : "Upload failed") }
+    finally { setStationBusy(false) }
+  }
+
+  async function removeReview() {
+    setStationBusy(true); setStationError(""); setStationMessage(""); setStationLog("")
+    try {
+      const response = await fetch("/api/station/review", { method: "DELETE" })
+      const data = await response.json() as { error?: string; station?: Station }
+      if (!response.ok) throw new Error(data.error || "Could not remove approvals")
+      if (data.station) setStation(data.station)
+      setStationMessage("Approvals are no longer applied. Generate the PowerPoint again without that review sheet.")
+    } catch (err) { setStationError(err instanceof Error ? err.message : "Could not remove approvals") }
     finally { setStationBusy(false) }
   }
 
@@ -196,9 +238,11 @@ export default function App() {
 
           {view === "station" && <>
             <SectionHead eyebrow="Traceable drafting" title="Station file" detail="Each proposed field links to a source document and page. Review flagged entries before use." action={<div className="flex gap-2">{station?.has_review_sheet && <Button variant="outline" asChild><a href="/api/station/download/review"><ArrowDownToLineIcon className="mr-2 size-4" />Review sheet</a></Button>}{station?.latest_output && <Button className="bg-[#244f70] hover:bg-[#183b58]" asChild><a href="/api/station/download/presentation"><ArrowDownToLineIcon className="mr-2 size-4" />PowerPoint</a></Button>}</div>} />
-            <Panel className="mb-6 p-6"><div className="flex items-start gap-3"><div className="rounded-xl bg-[#edf3f6] p-2.5 text-[#44718d]"><UploadCloudIcon className="size-5" /></div><div><h2 className="font-semibold text-[#244661]">Generate from this page</h2><p className="mt-1 text-sm text-muted-foreground">Choose documents and a PowerPoint template, or use the files already in this local workspace.</p></div></div><form onSubmit={buildDraft} className="mt-5 grid gap-4 lg:grid-cols-2"><label className="text-sm font-medium text-[#36566d]">Station name <Input className="mt-2" required maxLength={120} value={stationName} onChange={event => setStationName(event.target.value)} placeholder="Station 20 Abisolieren" /></label><label className="text-sm font-medium text-[#36566d]">Filename filter <span className="font-normal text-muted-foreground">(optional, existing files only)</span><Input className="mt-2" value={fileFilter} onChange={event => setFileFilter(event.target.value)} placeholder="Lastenheft" /></label><label className="text-sm font-medium text-[#36566d]">Source documents <span className="font-normal text-muted-foreground">(optional)</span><Input className="mt-2 h-auto py-2" type="file" multiple accept=".pdf,.docx,.doc,.txt,.md,.xlsx,.xlsm,.pptx" onChange={event => setSourceFiles(Array.from(event.target.files || []))} /><span className="mt-1 block text-xs font-normal text-muted-foreground">If empty, uses files under sources/. Up to 20 files, 30 MB each.</span></label><label className="text-sm font-medium text-[#36566d]">Station template <span className="font-normal text-muted-foreground">(.pptx)</span><Input className="mt-2 h-auto py-2" type="file" accept=".pptx" onChange={event => setTemplateFile(event.target.files?.[0] || null)} /><span className="mt-1 block text-xs font-normal text-muted-foreground">If empty, uses the local example template when available.</span></label><div className="flex flex-wrap items-center gap-3 lg:col-span-2"><Button type="submit" disabled={stationBusy || !stationName.trim()} className="bg-[#244f70] hover:bg-[#183b58]">{stationBusy ? <LoaderCircleIcon className="mr-2 size-4 animate-spin" /> : <Layers3Icon className="mr-2 size-4" />}Build draft mapping</Button><Button type="button" variant="outline" disabled={stationBusy || !station?.draft_ready || station.count === station.review_count} onClick={() => void generatePresentation()}>{stationBusy ? <LoaderCircleIcon className="mr-2 size-4 animate-spin" /> : <FileTextIcon className="mr-2 size-4" />}Generate PowerPoint</Button><span className="text-xs text-muted-foreground">Only entries without review flags are written.</span></div></form>{stationMessage && <p role="status" className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{stationMessage}</p>}{stationError && <pre role="alert" className="mt-4 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs text-red-800">{stationError}</pre>}{stationLog && <details className="mt-3 text-xs text-muted-foreground"><summary className="cursor-pointer">Run log</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">{stationLog}</pre></details>}</Panel>
+            <Panel className="mb-6 p-6"><div className="flex items-start gap-3"><div className="rounded-xl bg-[#edf3f6] p-2.5 text-[#44718d]"><UploadCloudIcon className="size-5" /></div><div><h2 className="font-semibold text-[#244661]">Generate from this page</h2><p className="mt-1 text-sm text-muted-foreground">Choose documents and a PowerPoint template, or use the files already in this local workspace.</p></div></div><form onSubmit={buildDraft} className="mt-5 grid gap-4 lg:grid-cols-2"><label className="text-sm font-medium text-[#36566d]">Station name <Input className="mt-2" required maxLength={120} value={stationName} onChange={event => setStationName(event.target.value)} placeholder="Station 20 Abisolieren" /></label><label className="text-sm font-medium text-[#36566d]">Filename filter <span className="font-normal text-muted-foreground">(optional, existing files only)</span><Input className="mt-2" value={fileFilter} onChange={event => setFileFilter(event.target.value)} placeholder="Lastenheft" /></label><label className="text-sm font-medium text-[#36566d]">Source documents <span className="font-normal text-muted-foreground">(optional)</span><Input className="mt-2 h-auto py-2" type="file" multiple accept=".pdf,.docx,.doc,.txt,.md,.xlsx,.xlsm,.pptx" onChange={event => setSourceFiles(Array.from(event.target.files || []))} /><span className="mt-1 block text-xs font-normal text-muted-foreground">If empty, uses files under sources/. Up to 20 files, 30 MB each.</span></label><label className="text-sm font-medium text-[#36566d]">Station template <span className="font-normal text-muted-foreground">(.pptx)</span><Input className="mt-2 h-auto py-2" type="file" accept=".pptx" onChange={event => setTemplateFile(event.target.files?.[0] || null)} /><span className="mt-1 block text-xs font-normal text-muted-foreground">If empty, uses the local example template when available.</span></label><div className="flex flex-wrap items-center gap-3 lg:col-span-2"><Button type="submit" disabled={stationBusy || !stationName.trim()} className="bg-[#244f70] hover:bg-[#183b58]">{stationBusy ? <LoaderCircleIcon className="mr-2 size-4 animate-spin" /> : <Layers3Icon className="mr-2 size-4" />}Build draft mapping</Button><Button type="button" variant="outline" disabled={stationBusy || !station?.draft_ready || !station.count} onClick={() => void generatePresentation()}>{stationBusy ? <LoaderCircleIcon className="mr-2 size-4 animate-spin" /> : <FileTextIcon className="mr-2 size-4" />}Generate PowerPoint</Button><label className="flex items-center gap-2 text-xs text-[#36566d]"><input type="checkbox" className="size-4 accent-[#244f70]" checked={includeReview} onChange={event => setIncludeReview(event.target.checked)} />Also write entries that still need review (each one is marked PRUEFEN in the deck)</label></div></form>
+            <div className="mt-5 rounded-xl border border-[#e5e9ee] bg-[#f8fafb] p-4"><p className="text-sm font-medium text-[#36566d]">Apply your review decisions <span className="font-normal text-muted-foreground">(optional)</span></p><p className="mt-1 text-xs text-muted-foreground">Download the review sheet, fill the column Freigabe with ja or nein, save it, and upload it here. ja = written as approved without PRUEFEN, nein = left out, empty = unchanged.</p><div className="mt-3 flex flex-wrap items-center gap-3"><Input key={reviewInputKey} className="h-auto max-w-sm py-2" type="file" accept=".xlsx" onChange={event => setReviewFile(event.target.files?.[0] || null)} /><Button type="button" variant="outline" disabled={stationBusy || !reviewFile} onClick={() => void uploadReview()}>Use reviewed sheet</Button>{station?.approvals && <Button type="button" variant="ghost" disabled={stationBusy} onClick={() => void removeReview()}>Remove approvals</Button>}</div>{station?.approvals && <p className="mt-3 text-xs text-[#36566d]">{station.approvals.error ? `Approvals file present but unreadable: ${station.approvals.error}` : `Approvals active: ${station.approvals.yes} ja · ${station.approvals.no} nein. They are applied to every PowerPoint until removed.`}</p>}</div>
+            {station?.write_counts && <p className="mt-4 rounded-lg bg-[#f1f5f8] p-3 text-xs text-[#36566d]">Last PowerPoint ({station.write_counts.ausgabe}): <b>{station.write_counts.geschrieben}</b> entries written · <b>{station.write_counts.zurueckgehalten}</b> held back for review (named on the slides) · <b>{station.write_counts.luecken}</b> fields marked open{station.write_counts.freigabe_datei ? ` · approvals used: ${station.write_counts.freigabe_ja} ja, ${station.write_counts.freigabe_nein} nein` : ""}{station.mapping_counts ? ` · ${station.mapping_counts.ohne_feld} of ${station.mapping_counts.betrachtet} requirements matched no field (see zuordnung_ohne_feld.xlsx)` : ""}</p>}{stationMessage && <p role="status" className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{stationMessage}</p>}{stationError && <pre role="alert" className="mt-4 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-red-50 p-3 text-xs text-red-800">{stationError}</pre>}{stationLog && <details className="mt-3 text-xs text-muted-foreground"><summary className="cursor-pointer">Run log</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">{stationLog}</pre></details>}</Panel>
             <div className="mb-6 grid gap-4 sm:grid-cols-3"><Metric icon={<FilesIcon className="size-5" />} label="Mapped entries" value={station?.count ?? 0} foot="Proposed field placements" /><Metric icon={<CircleAlertIcon className="size-5" />} label="Needs review" value={station?.review_count ?? 0} foot="Flagged by mapping rules" /><Metric icon={<FileTextIcon className="size-5" />} label="Current station" value={station?.station || "—"} foot="Supplied by a human" /></div>
-            <Panel className="overflow-hidden"><div className="border-b px-6 py-5"><h2 className="font-semibold text-[#244661]">Field mapping</h2><p className="mt-1 text-xs text-muted-foreground">Latest generated mapping · Inspect the spreadsheet before use. Spreadsheet edits are not imported automatically.</p></div>{station?.mappings.length ? <div className="divide-y">{station.mappings.map((row, index) => <div key={`${row.kennung}-${index}`} className="grid gap-3 px-6 py-5 lg:grid-cols-[160px_minmax(0,1fr)_180px]"><div><span className="rounded-md bg-[#eaf2f6] px-2 py-1 font-mono text-xs text-[#416d88]">{row.kennung}</span><p className="mt-3 text-xs text-muted-foreground">{row.folienart}</p></div><div><p className="text-sm font-semibold text-[#284960]">{row.feldname}</p><p className="mt-2 text-sm leading-relaxed text-[#51697c]">{row.text}</p><p className="mt-3 text-xs text-[#6d879b]">{row.datei} · page {row.seite || "—"}</p></div><div className="lg:text-right"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${row.pruefen ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{row.pruefen ? "Review required" : "Rule checked"}</span><p className="mt-3 text-xs text-muted-foreground">{row.regel}</p></div></div>)}</div> : <Empty title="No mapping generated" detail="Run the local pipeline with a station template and a human-supplied station name." />}</Panel>
+            <Panel className="overflow-hidden"><div className="border-b px-6 py-5"><h2 className="font-semibold text-[#244661]">Field mapping</h2><p className="mt-1 text-xs text-muted-foreground">Latest generated mapping · Decisions in the review sheet are used only after you upload it above (column Freigabe: ja / nein).</p></div>{station?.mappings.length ? <div className="divide-y">{station.mappings.map((row, index) => <div key={`${row.kennung}-${index}`} className="grid gap-3 px-6 py-5 lg:grid-cols-[160px_minmax(0,1fr)_180px]"><div><span className="rounded-md bg-[#eaf2f6] px-2 py-1 font-mono text-xs text-[#416d88]">{row.kennung}</span><p className="mt-3 text-xs text-muted-foreground">{row.folienart}</p></div><div><p className="text-sm font-semibold text-[#284960]">{row.feldname}</p><p className="mt-2 text-sm leading-relaxed text-[#51697c]">{row.text.replace(/[\uf0b7\uf0a7\uf06c\uf0d8\uf0fc\uf076]/g, "•")}</p><p className="mt-3 text-xs text-[#6d879b]">{row.datei} · page {row.seite || "—"}</p></div><div className="lg:text-right"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${row.pruefen ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{row.pruefen ? "Review required" : "Not flagged"}</span><p className="mt-3 text-xs text-muted-foreground">{row.regel}</p></div></div>)}</div> : <Empty title="No mapping generated" detail="Run the local pipeline with a station template and a human-supplied station name." />}</Panel>
           </>}
 
           {view === "sources" && <>
