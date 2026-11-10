@@ -55,6 +55,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+import stationen
+
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "out"
 
@@ -145,7 +147,20 @@ def main() -> int:
     ap.add_argument("--datei", default=None)
     ap.add_argument("--nur-aenderungen", action="store_true")
     ap.add_argument("--aus", default=None)
+    ap.add_argument("--station", default=None,
+                    help="Station, fuer die die Aenderungen gelesen werden (z. B. 'Station 20 Abisolieren')")
+    ap.add_argument("--stationsliste", default=None,
+                    help="CSV/JSON mit allen Stationen (Nummer;Name;Stichworte)")
     a = ap.parse_args()
+
+    alle_st = stationen.stationsliste_laden(Path(a.stationsliste)) if a.stationsliste else []
+    profil = stationen.profil_aus_name(a.station) if a.station else None
+    if profil and alle_st:
+        for p_ in alle_st:
+            if (p_.nummer and p_.nummer == profil.nummer) or \
+                    stationen.falten(p_.name) == stationen.falten(profil.name):
+                profil = p_
+                break
 
     pfad = Path(a.req)
     if not pfad.exists():
@@ -176,6 +191,9 @@ def main() -> int:
             st = unterschied(x, y)
             paare.append((x, y, st, mehrdeutig))
 
+    def einordnen(y: dict):
+        return stationen.bewerte(y["text"], profil, alle_st or None)
+
     zaehler = collections.Counter(p[2] for p in paare)
     mehrdeutige = sum(1 for p in paare if p[3])
     echte = [p for p in paare if p[2] not in ("unveraendert", "nur Darstellung")]
@@ -183,6 +201,8 @@ def main() -> int:
 
     if a.nur_aenderungen:
         paare = echte
+    fuer_station = collections.Counter(
+        einordnen(p[1]).geltung for p in echte) if profil and profil.bewertbar else None
 
     # ---------------------------------------------------------------- Zahlen
     L = [f"VERSIONSKETTEN  {datetime.now():%Y-%m-%d %H:%M}", "=" * 62, ""]
@@ -198,6 +218,10 @@ def main() -> int:
           "", "  Was die Paare zeigen:"]
     for k, n in zaehler.most_common():
         L.append(f"    {n:>5}  {k}")
+    if fuer_station is not None:
+        L += ["", f"  Echte Aenderungen, eingeordnet fuer {ascii_safe(profil.name)}:"]
+        for g in ("Station", "Anlagenweit", "Unklar", "Andere Station"):
+            L.append(f"    {fuer_station.get(g, 0):>5}  {g}")
     L += ["", "  Lesart:",
           "    unveraendert     wortgleich in beiden Fassungen",
           "    nur Darstellung  Unterschied stammt aus der Textgewinnung",
@@ -230,10 +254,11 @@ def main() -> int:
     grau = wb.add_format({"text_wrap": True, "valign": "top", "border": 1,
                           "font_color": "#888888"})
     ws = wb.add_worksheet("Versionsketten")
-    spalten = ["Nr", "Status", "Zuordnung", "Datei A", "Seite A", "Verb. A",
+    spalten = ["Nr", "Status", "Zuordnung", "Geltung", "Thema", "Aenderung (Kurz)",
+               "Datei A", "Seite A", "Verb. A",
                "Wert A", "Wortlaut A", "Datei B", "Seite B", "Verb. B",
                "Wert B", "Wortlaut B"]
-    breiten = [5, 22, 12, 30, 8, 9, 14, 58, 30, 8, 9, 14, 58]
+    breiten = [5, 22, 12, 14, 22, 34, 30, 8, 9, 14, 58, 30, 8, 9, 14, 58]
     for i, (s, b) in enumerate(zip(spalten, breiten)):
         ws.write(0, i, s, kopf)
         ws.set_column(i, i, b)
@@ -242,12 +267,24 @@ def main() -> int:
 
     rang = {"WERT GEAENDERT": 0, "VERBINDLICHKEIT GEAENDERT": 1,
             "Text geaendert": 2, "nur Darstellung": 3, "unveraendert": 4}
-    paare.sort(key=lambda p: (rang.get(p[2], 9), str(p[0].get("file")),
-                              str(p[0].get("page"))))
+    geltung_rang = {"Station": 0, "Anlagenweit": 1, "Unklar": 2, "Andere Station": 3, "": 1}
+    bew = {id(p[1]): einordnen(p[1]) for p in paare}
+    paare.sort(key=lambda p: (rang.get(p[2], 9),
+                              geltung_rang.get(bew[id(p[1])].geltung, 9),
+                              str(p[0].get("file")), str(p[0].get("page"))))
     for n, (x, y, st, md) in enumerate(paare, start=1):
         f = warn if rang.get(st, 9) <= 2 else (grau if st == "unveraendert" else zelle)
+        b = bew[id(y)]
+        if st == "WERT GEAENDERT":
+            kurz = f"{b.thema}: {wert(x) or '-'} → {wert(y) or '-'}"
+        elif st == "VERBINDLICHKEIT GEAENDERT":
+            kurz = f"{b.thema}: {x.get('binding', '')} → {y.get('binding', '')}"
+        elif st == "Text geaendert":
+            kurz = f"{b.thema}: Wortlaut geaendert"
+        else:
+            kurz = ""
         ws.write_row(n, 0, [
-            n, st, "mehrdeutig" if md else "eindeutig",
+            n, st, "mehrdeutig" if md else "eindeutig", b.geltung or "-", b.thema, kurz,
             x.get("file", ""), x.get("page", ""), x.get("binding", ""), wert(x),
             norm(x["text"]),
             y.get("file", ""), y.get("page", ""), y.get("binding", ""), wert(y),

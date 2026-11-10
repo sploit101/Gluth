@@ -31,6 +31,10 @@ def main() -> int:
                     help="PowerPoint station file template; needed for station mapping")
     ap.add_argument("--station", help="station name supplied by a human")
     ap.add_argument("--file", help="only map requirements from filenames containing this text")
+    ap.add_argument("--stationsliste", type=Path,
+                    help="CSV/JSON with the project's stations (Nummer;Name;Stichworte): "
+                         "every sentence is sorted against all stations and one sheet per "
+                         "station is written to out/stationsblaetter/")
     ap.add_argument("--ocr", action="store_true", help="OCR scanned pages before indexing")
     ap.add_argument("--embed", action="store_true", help="build optional local neural index")
     ap.add_argument("--write", action="store_true",
@@ -51,6 +55,8 @@ def main() -> int:
         ap.error("--template requires a human-supplied --station")
     if args.template and not args.template.is_file():
         ap.error(f"template not found: {args.template}")
+    if args.stationsliste and not args.stationsliste.is_file():
+        ap.error(f"station list not found: {args.stationsliste}")
 
     try:
         run("extract.py", "--input", str(args.input))
@@ -69,6 +75,8 @@ def main() -> int:
             mapping_args = ["--station", args.station]
             if args.file:
                 mapping_args += ["--datei", args.file]
+            if args.stationsliste:
+                mapping_args += ["--stationsliste", str(args.stationsliste)]
             run("zuordnen.py", *mapping_args)
             if args.write:
                 output = OUT / f"Stationsakte_{datetime.now():%Y%m%d_%H%M%S_%f}.pptx"

@@ -414,6 +414,8 @@ def api_station():
         "station": rows[0].get("station", "") if rows else "",
         "mappings": rows,
         "has_review_sheet": (OUT / "zuordnung.xlsx").exists(),
+        "has_station_sheet": (OUT / "stationsblatt.xlsx").exists(),
+        "has_station_proposal": (OUT / "stationsliste_vorschlag.csv").exists(),
         "latest_output": latest.name if latest and latest.is_file() else None,
         "draft_ready": WORKFLOW_FILE.exists(),
         "mapping_counts": _read_json(OUT / "zuordnung_zahlen.json"),
@@ -461,6 +463,7 @@ async def api_station_draft(
     file_filter: str = Form(""),
     template: UploadFile | None = File(None),
     documents: list[UploadFile] | None = File(None),
+    station_list: UploadFile | None = File(None),
 ):
     """Create a review mapping from uploaded files or the existing local corpus."""
     if not _origin_ok(request):
@@ -511,6 +514,15 @@ async def api_station_draft(
                 "--template", str(template_path), "--station", station]
         if file_filter.strip() and not uploads:
             args += ["--file", file_filter.strip()[:120]]
+        if station_list and station_list.filename:
+            if Path(station_list.filename).suffix.lower() not in {".csv", ".json"}:
+                return JSONResponse({"error": "The station list must be a .csv or .json file."}, status_code=400)
+            list_path = uploaded_template / "stationsliste.csv"
+            if Path(station_list.filename).suffix.lower() == ".json":
+                list_path = uploaded_template / "stationsliste.json"
+            if not await _save_upload(station_list, list_path, 1024 * 1024):
+                return JSONResponse({"error": "Station list is empty or larger than 1 MB."}, status_code=400)
+            args += ["--stationsliste", str(list_path)]
         ok, log = await asyncio.to_thread(_run_stage, *args)
         if not ok:
             return JSONResponse({"error": "Draft generation failed.", "log": log}, status_code=500)
@@ -620,6 +632,10 @@ def api_station_download(kind: str, request: Request):
         return _origin_denied()
     if kind == "review":
         path = OUT / "zuordnung.xlsx"
+    elif kind == "stationsblatt":
+        path = OUT / "stationsblatt.xlsx"
+    elif kind == "stationsliste":
+        path = OUT / "stationsliste_vorschlag.csv"
     elif kind == "presentation":
         workflow = json.loads(WORKFLOW_FILE.read_text(encoding="utf-8")) if WORKFLOW_FILE.exists() else None
         if workflow:

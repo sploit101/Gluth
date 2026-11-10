@@ -87,6 +87,44 @@ port 5173. Open `http://127.0.0.1:5173` for the live frontend. The frontend
 proxies `/api` to the backend. `npm run build` in `frontend/` builds the same
 dashboard for FastAPI to serve at `http://127.0.0.1:8800`.
 
+## Station sheet: what an engineer actually reads
+
+`out/stationsblatt.xlsx` is written on every run next to the review sheet. It
+answers "what applies to *my* station?" instead of listing quotes from the whole
+line. Every sentence is rated by rules in `stationen.py` (no model), and every
+rating states its reason:
+
+| Rating | Meaning |
+|---|---|
+| Station | names the station number or a process of this station (e.g. stripping) |
+| Anlagenweit | applies to all stations (safety, capability, documentation, acceptance, ...) |
+| Andere Station | names another station or process, listed only as a cross-check |
+| Unklar | no hint at all, a person decides |
+
+Sheets: `Fähigkeiten` (process / Cgk / tolerance as one table, duplicates merged),
+`Diese Station`, `Anlagenweit`, `Unklar`, `Andere Stationen`, and a gap list on
+`Übersicht` (fields with nothing found). The German short text is a keyword note
+built from the binding level, the topic and the values found; the quoted sentence
+with file and page stays the evidence. The last column `Stimmt?` (ja/nein) is for
+feedback and shows which rules need tuning.
+
+With a placeholder station such as "Gesamtanlage (Stationszuordnung folgt)" nothing
+is rated; sentences are sorted by topic and `out/stationsliste_vorschlag.csv`
+proposes stations from the processes found. Fill in numbers and names, then:
+
+```sh
+python run.py --template path/to/Stationsakte.pptx --station "Station 20 Abisolieren" --stationsliste stationsliste.csv
+```
+
+This rates each sentence against all stations and writes one sheet per station to
+`out/stationsblaetter/`. See `stationsliste_beispiel.csv`. Rows rated "Andere
+Station" or "Unklar" are marked for review, so the default PowerPoint skips them.
+In the web app, upload the list under **Station list**.
+
+Version comparison for one station:
+`python ketten.py --station "Station 20 Abisolieren" --stationsliste stationsliste.csv`
+puts changed values for that station first, with old and new value.
+
 ## Limits that need human input
 
 - The source document may describe an entire line. The program cannot infer

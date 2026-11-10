@@ -43,6 +43,19 @@ Ausgabe
     out/zuordnung.jsonl        maschinenlesbar, Eingabe fuer den Schreiber
     out/zuordnung_zahlen.txt   nur Zahlen        -> darf geteilt werden
     out/zuordnung.xlsx         mit Wortlauten    -> VERTRAULICH
+    out/stationsblatt.xlsx     Lesefassung fuer den Konstrukteur: Faehigkeits-
+                               matrix, Saetze der Station, Anlagenweites,
+                               Unklares, Luecken   -> VERTRAULICH
+
+Stationszuordnung (neu)
+-----------------------
+Mit --station "Station 20 Abisolieren" wird jeder Satz bewertet: gehoert er zu
+dieser Station, gilt er anlagenweit, gehoert er zu einer anderen Station oder
+ist es unklar? Die Regeln stehen in stationen.py, jede Bewertung nennt ihren
+Grund. Mit --stationsliste (Nummer;Name;Stichworte) entsteht ausserdem fuer
+JEDE Station ein eigenes Stationsblatt in out/stationsblaetter/.
+Ohne echte Station ("Gesamtanlage ...") wird nicht bewertet, nur nach Thema
+sortiert und eine Stationsliste vorgeschlagen (out/stationsliste_vorschlag.csv).
 """
 
 from __future__ import annotations
@@ -54,6 +67,9 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+
+import stationen
+import stationsblatt
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "out"
@@ -465,6 +481,9 @@ def main() -> int:
     ap.add_argument("--station", default=None,
                     help="Stationsbezeichnung. Wird als MENSCHLICHE Angabe "
                          "protokolliert, nicht aus dem Dokument abgeleitet.")
+    ap.add_argument("--stationsliste", default=None,
+                    help="CSV/JSON mit den Stationen des Projekts (Nummer;Name;Stichworte). "
+                         "Damit wird jeder Satz gegen alle Stationen gestellt.")
     ap.add_argument("--nur-sichere", action="store_true", dest="nur_sichere",
                     help="nur Felder mit befuellbar=ja")
     ap.add_argument("--ab-kennung", type=int, default=1,
@@ -511,6 +530,30 @@ def main() -> int:
 
     R = regeln(kat)
 
+    # --------------------------------------------------- Stationen (neu)
+    # profil = die Station, fuer die gearbeitet wird; alle = ganze Stationsliste.
+    # Ohne echte Station ("Gesamtanlage ...") ist profil None: dann wird nichts
+    # bewertet, nur das Thema je Satz bestimmt.
+    alle_stationen: list[stationen.Profil] = []
+    if a.stationsliste:
+        try:
+            alle_stationen = stationen.stationsliste_laden(Path(a.stationsliste))
+        except (OSError, ValueError, KeyError) as e:
+            print("FEHLER: Stationsliste nicht lesbar:", ascii_safe(e))
+            return 2
+        if not alle_stationen:
+            print("FEHLER: Die Stationsliste enthaelt keine Stationen.")
+            return 2
+    profil = stationen.profil_aus_name(a.station) if a.station else None
+    if profil and alle_stationen:
+        # Gleiche Station in der Liste? Dann deren (genaueres) Profil verwenden.
+        for p_ in alle_stationen:
+            if (p_.nummer and p_.nummer == profil.nummer) or \
+                    stationen.falten(p_.name) == stationen.falten(profil.name):
+                profil = p_
+                break
+    saetze: dict[str, dict] = {}        # jeder verwertbare Satz, einmal
+
     # ------------------------------------------------------------- zuordnen
     treffer = []
     verworfen = []
@@ -542,6 +585,38 @@ def main() -> int:
                     wohin.append((name, folienart, feld, sicher))
             except Exception:                    # pragma: no cover
                 continue
+
+        # Jeder verwertbare Satz wird einmal vermerkt - auch wenn er in kein
+        # Feld der Vorlage passt. Nur so kann das Stationsblatt vollstaendig
+        # sein: "Gehoert zu meiner Station" und "hat ein Feld" sind zwei Fragen.
+        sk = re.sub(r"\W+", " ", t).strip().lower()[:200]
+        satz = saetze.get(sk)
+        if satz is None:
+            kmp = stationen.kompakt(t)
+            kennwerte = kmp["kennwert"] + kmp["toleranz"]
+            if not kennwerte:
+                kw = stationen.kennwert_text(r.get("operator"), r.get("value"),
+                                             r.get("unit"), r.get("value_max"))
+                if kw and r.get("unit"):
+                    kennwerte = [kw]
+            satz = saetze[sk] = {
+                "text": t, "datei": r["_datei"], "seiten": [], "binding": r.get("binding", ""),
+                "kennwerte": kennwerte, "felder": [], "faehigkeit": {},
+                "kompakt": kmp,
+            }
+        satz["seiten"].append(r["_seite"])
+        bew = stationen.bewerte(t, profil, alle_stationen)
+        for name, folienart, feld, _sicher in wohin:
+            fn = kat[(folienart, feld)]["feldname"]
+            if f"{folienart} / {fn}" not in satz["felder"]:
+                satz["felder"].append(f"{folienart} / {fn}")
+            if name in AUSZUG_JE_REGEL:               # Verfahren / Kennwert / Toleranz
+                teil = name.split("_", 1)[1]
+                # Zellen der Matrix: kurzer Wert, falls er sich sicher lesen laesst;
+                # sonst der woertliche Auszug.
+                kurz_ = " | ".join(satz["kompakt"].get(teil, []))
+                satz["faehigkeit"][teil] = kurz_ or AUSZUG_JE_REGEL[name](t)
+
         if not wohin:
             ohne_feld += 1
             ohne_feld_liste.append({"text": t, "datei": r["_datei"],
@@ -577,6 +652,11 @@ def main() -> int:
                 pruefen.append(norm(r["suspect"]))
             if r.get("needs_question"):
                 pruefen.append("offener Punkt")
+            # Stationsbezug: nur bewerten, wenn eine echte Station bekannt ist
+            if bew.geltung == "Andere Station":
+                pruefen.append("Gehoert wohl zu anderer Station: " + bew.andere)
+            elif bew.geltung == "Unklar":
+                pruefen.append("Station nicht erkennbar")
             treffer.append({
                 "folienart": folienart,
                 "feld_id": feld,
@@ -601,6 +681,12 @@ def main() -> int:
                                  if name in TEXTFELD_VORRANG else ""),
                 "req_id": r.get("req_id", ""),
                 "subject_key": r.get("subject_key", ""),
+                "geltung": bew.geltung,
+                "geltung_warum": bew.warum,
+                "thema": bew.thema,
+                "kurzfassung": stationen.kurzfassung(
+                    r.get("binding", ""), bew, satz["kennwerte"],
+                    stationen.fachbegriffe(t)),
             })
 
     # Kennungen vergeben: stabile Reihenfolge nach Folienart, Feld, Seite
@@ -617,6 +703,8 @@ def main() -> int:
     betrachtet = len(rows)
     verwertet = betrachtet - muell - zu_kurz - ohne_feld
 
+    geltung_zaehler = collections.Counter(
+        z["geltung"] for z in treffer if z["geltung"])
     L = [f"ZUORDNUNG  {datetime.now():%Y-%m-%d %H:%M}", "=" * 68, ""]
     if a.datei:
         L.append(f"  nur Dateien mit             '{a.datei}'")
@@ -627,6 +715,9 @@ def main() -> int:
                  "(keine Stationsliste vorhanden)")
     if a.nur_sichere:
         L.append("  nur Felder mit befuellbar=ja")
+    if profil is not None and profil.bewertbar:
+        L.append(f"  Stationsliste               "
+                 f"{len(alle_stationen) if alle_stationen else 'keine (nur Name/Nummer der Station)'}")
     L += [f"  Anforderungen betrachtet    {betrachtet}",
           f"  davon als Muell verworfen   {muell}",
           f"  davon zu kurz weg           {zu_kurz}",
@@ -640,6 +731,12 @@ def main() -> int:
           f"  Textfeld-Doppel vermieden   {mehrfach_text}",
           f"  davon als 'pruefen' markiert {zu_pruefen} "
           f"({100*zu_pruefen/max(len(treffer),1):.0f} %)",
+          *(["", "  Einordnung der Eintraege (Regeln in stationen.py):"]
+            + [f"    {geltung_zaehler.get(g, 0):>5}  {g}"
+               for g in ("Station", "Anlagenweit", "Andere Station", "Unklar")]
+            if geltung_zaehler else
+            ["", "  Einordnung nach Station: nicht moeglich (keine echte Station bekannt)."]),
+          "",
           f"  Zielfelder im Katalog       {len(kat)}",
           f"  Zielfelder tatsaechlich befuellt {len(je_feld)}",
           "", "  Je Zielfeld:"]
@@ -667,9 +764,10 @@ def main() -> int:
           "    sicher. Ein Mensch muss sie bestaetigen, bevor sie in die",
           "    Akte geschrieben wird.",
           "",
-          "    Die STATION ist nicht abgeleitet. Das Lastenheft ist nach",
-          "    Themen gegliedert, die Stationsakte nach Stationen. Ohne",
-          "    Stationsliste kann kein Programm das entscheiden.",
+          "    Die STATION nennt immer ein Mensch. Das Programm bewertet nur,",
+          "    ob ein Satz dazu passt (Station / Anlagenweit / Andere Station /",
+          "    Unklar) und nennt den Grund. Mit einer Stationsliste wird jeder",
+          "    Satz gegen alle Stationen gestellt. Sieh dir 'Unklar' an.",
           "", "Diese Datei enthaelt keine Dateinamen und keine Saetze."]
 
     OUT.mkdir(exist_ok=True)
@@ -679,6 +777,8 @@ def main() -> int:
         "betrachtet": betrachtet, "muell": muell, "zu_kurz": zu_kurz,
         "ohne_feld": ohne_feld, "mit_feld": verwertet,
         "eintraege": len(treffer), "pruefen": zu_pruefen,
+        "geltung": dict(geltung_zaehler),
+        "stationsliste": len(alle_stationen),
     }, indent=1), encoding="utf-8")
     for z in L:
         print(ascii_safe(z))
@@ -737,9 +837,9 @@ def main() -> int:
     spalten = ["Kennung", "Folienart", "Feld", "Feldname", "Prüfen",
                SPALTE_FREIGABE,
                "Regel", "Verbindlichkeit", "Operator", "Wert", "Einheit",
-               "Station", "Datei", "Seite", "Wortlaut", "Auszug (Tabelle)",
-               "Auch passend", "Bemerkung"]
-    breiten = [10, 26, 24, 26, 30, 12, 20, 13, 9, 10, 9, 22, 34, 7, 90, 30, 30, 24]
+               "Station", "Geltung", "Thema", "Kurzfassung (DE)", "Datei", "Seite",
+               "Wortlaut", "Auszug (Tabelle)", "Auch passend", "Bemerkung"]
+    breiten = [10, 26, 24, 26, 30, 12, 20, 13, 9, 10, 9, 22, 14, 22, 34, 34, 7, 90, 30, 30, 24]
     for i, (s, b) in enumerate(zip(spalten, breiten)):
         ws.write(0, i, s, kopf)
         ws.set_column(i, i, b)
@@ -752,7 +852,8 @@ def main() -> int:
             z["pruefen"] or "sicher", "",
             z["regel"], z["binding"],
             z["operator"], z["value"] if z["value"] is not None else "",
-            z["unit"], z["station"], z["datei"], z["seite"], z["text"],
+            z["unit"], z["station"], z["geltung"] or "-", z["thema"],
+            z["kurzfassung"], z["datei"], z["seite"], z["text"],
             z.get("auszug", ""), z.get("auch_passend", ""), "",
         ], f)
     if treffer:
@@ -820,8 +921,38 @@ def main() -> int:
         except PermissionError:
             print("HINWEIS: zuordnung_verworfen.xlsx ist in Excel offen.")
 
+    # ------------------------------------------------ Stationsblatt(er)
+    # Lesefassung fuer den Konstrukteur. Ein Fehler hier darf die Pruefliste
+    # oben nicht entwerten, deshalb nur eine Warnung.
+    satzliste = []
+    for v in saetze.values():
+        seiten = v["seiten"]
+        satzliste.append({**v, "seite_min": min(
+            (int(x) for x in map(str, seiten) if x.isdigit()), default=0)})
+    geschrieben = []
+    try:
+        blatt = OUT / "stationsblatt.xlsx"
+        stationsblatt.schreibe(blatt, profil, alle_stationen or None, satzliste,
+                               treffer, kat)
+        geschrieben.append(blatt)
+        if profil is None:
+            n = stationsblatt.vorschlag_csv(OUT / "stationsliste_vorschlag.csv", satzliste)
+            print(f"\n  out/stationsliste_vorschlag.csv  {n} Verfahren als Vorlage fuer die Stationsliste")
+        if alle_stationen:
+            ordner = OUT / "stationsblaetter"
+            ordner.mkdir(exist_ok=True)
+            for p_ in alle_stationen:
+                name = re.sub(r"[^\w.-]+", "_", p_.name).strip("_")[:60] or "Station"
+                ziel_p = ordner / f"{name}.xlsx"
+                stationsblatt.schreibe(ziel_p, p_, alle_stationen, satzliste, treffer, kat)
+                geschrieben.append(ziel_p)
+    except Exception as e:                       # pragma: no cover
+        print("WARNUNG: Stationsblatt nicht geschrieben:", ascii_safe(e))
+
     print()
     print("geschrieben:")
+    for g in geschrieben:
+        print(f"  {ascii_safe(g.relative_to(HERE))}  Lesefassung - VERTRAULICH")
     print("  out\\zuordnung_zahlen.txt   nur Zahlen - darf geteilt werden")
     print("  out\\zuordnung.jsonl        Eingabe fuer den Schreiber")
     print("  out\\zuordnung.xlsx         mit Wortlauten - VERTRAULICH")

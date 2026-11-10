@@ -1,0 +1,9 @@
+# Beispiel einer Stationsliste. Nur Nummer und Name sind noetig, Stichworte sind optional.
+# Aufruf:  python run.py --template Stationsakte.pptx --station "Station 20 Abisolieren" --stationsliste stationsliste.csv
+# Die Datei out/stationsliste_vorschlag.csv enthaelt ein Geruest aus den Verfahren, die im Lastenheft vorkommen.
+Nummer;Name;Stichworte
+10;Zuführung;Magazin, Vereinzeler
+20;Abisolieren;
+30;Crimpen;
+40;Einpressen;
+50;Sichtprüfung;
