@@ -53,6 +53,33 @@ class BewertungTests(unittest.TestCase):
         b = st.bewerte("Die Gehäusemontage erfolgt halbautomatisch.", p)
         self.assertEqual(b.geltung, "Station")
 
+    def test_vague_word_alone_is_unclear_not_other_station(self):
+        b = self.check("The feeding of cables is manual.", "Unklar")
+        self.assertIn("vieldeutig", b.warum)
+
+    def test_confidence_levels(self):
+        self.assertEqual(st.bewerte("The stripping length is 5 mm.", S20).sicherheit, "hoch")
+        self.assertEqual(st.bewerte("Station 20 is manual.", S20).sicherheit, "hoch")
+        self.assertEqual(st.bewerte("The customer may change the colour.", S20).sicherheit, "niedrig")
+
+    def test_feedback_evaluation(self):
+        import openpyxl
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "sb.xlsx"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Diese Station"
+            ws.append(["Nr", "Thema", "Sicherheit", "Wortlaut (Beleg)",
+                       "Warum diese Einordnung", "Stimmt?"])
+            ws.append([1, "Abisolieren", "hoch", "a", "Verfahren Abisolieren", "ja"])
+            ws.append([2, "Crimpen", "mittel", "b", "Verfahren Crimpen", "nein"])
+            ws.append([3, "x", "mittel", "c", "x", ""])
+            wb.save(f)
+            e = st.auswerten(f, Path(d) / "falsch.csv")
+            self.assertEqual(e["blaetter"]["Diese Station"], {"ja": 1, "nein": 1, "richtig": 0.5})
+            self.assertEqual(len(e["falsch"]), 1)
+            self.assertTrue((Path(d) / "falsch.csv").exists())
+
     def test_compact_values_only_from_text(self):
         k = st.kompakt("Cgk >= 1.33 and Cpk>=1.67, tolerance +/- 0.2 mm")
         self.assertEqual(k["kennwert"], ["Cgk ≥ 1,33", "Cpk ≥ 1,67"])

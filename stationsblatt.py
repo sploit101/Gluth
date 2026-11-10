@@ -224,10 +224,10 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
     # -------------------------------------------------- Satzlisten je Einordnung
     def satzblatt(name: str, auswahl: list[dict], farbe: str):
         ws_ = wb.add_worksheet(name)
-        sp_ = ["Nr", "Thema", "Verb.", "Kurzfassung (DE)", "Kennwerte", "Fachbegriffe (DE)",
+        sp_ = ["Nr", "Thema", "Sicherheit", "Verb.", "Kurzfassung (DE)", "Kennwerte", "Fachbegriffe (DE)",
                "Wortlaut (Beleg)", "Datei", "Seite(n)", "Warum diese Einordnung",
                "Feld in der Akte", "Stimmt?"]
-        br_ = [5, 22, 8, 34, 22, 28, 80, 26, 10, 30, 28, 9]
+        br_ = [5, 22, 11, 8, 34, 22, 28, 80, 26, 10, 30, 28, 9]
         for i, (s_, b_) in enumerate(zip(sp_, br_)):
             ws_.write(0, i, s_, fm["kopf"])
             ws_.set_column(i, i, b_)
@@ -236,7 +236,7 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
             b = s["bew"]
             warum = b.warum + (f" → {b.andere}" if b.andere and b.andere not in b.warum else "")
             ws_.write_row(n, 0, [
-                n, b.thema, s.get("binding", ""), s["kurz"], "; ".join(s.get("kennwerte") or []),
+                n, b.thema, b.sicherheit or "-", s.get("binding", ""), s["kurz"], "; ".join(s.get("kennwerte") or []),
                 ", ".join(s["begriffe"]), s["text"], Path(s.get("datei", "")).name,
                 _seiten(s.get("seiten", [])), warum, "; ".join(s.get("felder", [])), ""],
                 fm[farbe])

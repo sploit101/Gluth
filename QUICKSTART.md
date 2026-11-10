@@ -121,6 +121,14 @@ This rates each sentence against all stations and writes one sheet per station t
 Station" or "Unklar" are marked for review, so the default PowerPoint skips them.
 In the web app, upload the list under **Station list**.
 
+Each rating carries a confidence (hoch / mittel / niedrig). A sentence that only
+contains a vague word such as "feeding" or "insert" is never thrown out as
+"other station"; it becomes Unklar so nothing relevant disappears.
+
+After someone fills in `Stimmt?` (ja = rating correct), measure it:
+`python stationen.py --auswerten out/stationsblatt.xlsx` prints the hit rate per
+sheet and confidence, and writes the wrong rows to `*_falsch.csv`.
+
 Version comparison for one station:
 `python ketten.py --station "Station 20 Abisolieren" --stationsliste stationsliste.csv`
 puts changed values for that station first, with old and new value.

@@ -312,24 +312,42 @@ class Bewertung:
     themen: list[str] = field(default_factory=list)       # deutsche Bezeichnungen
     themen_keys: list[str] = field(default_factory=list)
     andere: str = ""             # Name der vermutlich gemeinten Station
+    sicherheit: str = "niedrig"  # hoch | mittel | niedrig - wie belastbar der Grund ist
 
     @property
     def thema(self) -> str:
         return " / ".join(self.themen) if self.themen else "Allgemein"
 
 
-def _passt(profil: Profil, text_gefaltet: str, nummern: set[str], keys: set[str]) -> str:
-    """Grund, warum der Text zu diesem Profil passt - oder leer."""
+# Woerter, die ein Verfahren nur andeuten ("feed", "insert", "place" kommen in
+# jedem zweiten Satz vor). Ein Treffer, der OHNE diese Woerter verschwindet,
+# gilt nur als "mittel" sicher.
+VIELDEUTIG = re.compile(
+    r"\b(feed(ing|er|s)?|insert(ion|ing|ed)?|place(d|ment)?|reject(s|ed)?|scrap|"
+    r"label(s|led|ling)?|packing|packag\w*|handling|portal|reel|spool|cut(s|ting)?|"
+    r"press(ing)?|screw(s)?|robot(s)?|vision|torque|conveyor|trommel)\b", re.I)
+
+
+def _starke_keys(keys: set[str], t: str) -> set[str]:
+    """Verfahren, die auch ohne die vieldeutigen Woerter noch erkannt werden."""
+    rest = VIELDEUTIG.sub(" ", t)
+    return {k for k in keys if ALLE_THEMEN[k].muster.search(rest)}
+
+
+def _passt(profil: Profil, text_gefaltet: str, nummern: set[str], keys: set[str]) -> tuple[str, str]:
+    """(Grund, Sicherheit), warum der Text zu diesem Profil passt - oder ('', '')."""
     if profil.nummer and profil.nummer in nummern:
-        return f"Station {profil.nummer} genannt"
-    gemeinsam = [ALLE_THEMEN[k].de for k in sorted(keys & profil.prozesse)]
-    if gemeinsam:
-        return "Verfahren " + ", ".join(gemeinsam)
+        return f"Station {profil.nummer} genannt", "hoch"
+    gemeinsam_keys = keys & profil.prozesse
+    if gemeinsam_keys:
+        stark = _starke_keys(gemeinsam_keys, text_gefaltet)
+        namen = ", ".join(ALLE_THEMEN[k].de for k in sorted(gemeinsam_keys))
+        return "Verfahren " + namen, ("hoch" if stark else "mittel")
     for muster in profil.eigene:
         m = muster.search(text_gefaltet)
         if m:
-            return f"Stichwort '{m.group(0)}'"
-    return ""
+            return f"Stichwort '{m.group(0)}'", "mittel"
+    return "", ""
 
 
 def bewerte(text: str, profil: Profil | None,
@@ -354,29 +372,31 @@ def bewerte(text: str, profil: Profil | None,
     global_marker = bool(GLOBAL.search(t))
 
     # Gibt es in der Stationsliste eine bessere Heimat fuer den Satz?
-    heimat = ""
+    heimat, heimat_sich = "", ""
     if alle:
-        beste = (0, "")
+        beste = (0, "", "")
         for q in alle:
             if q.name == profil.name:
                 continue
-            grund = _passt(q, t, nummern, prozess_keys)
+            grund, sich = _passt(q, t, nummern, prozess_keys)
             if not grund:
                 continue
-            punkte = 10 if (q.nummer and q.nummer in nummern) else 1 + len(
-                prozess_keys & q.prozesse)
+            punkte = 10 if (q.nummer and q.nummer in nummern) else (
+                1 + len(prozess_keys & q.prozesse)) * (2 if sich == "hoch" else 1)
             if punkte > beste[0]:
-                beste = (punkte, f"{q.name} ({grund})")
-        heimat = beste[1]
+                beste = (punkte, f"{q.name} ({grund})", sich)
+        heimat, heimat_sich = beste[1], beste[2]
 
     # 1. Eine Stationsnummer im Text entscheidet
     if nummern and not global_marker:
         if profil.nummer and profil.nummer in nummern:
             b.geltung, b.warum = "Station", f"Station {profil.nummer} genannt"
+            b.sicherheit = "hoch"
         elif profil.nummer:
             b.geltung = "Andere Station"
             b.warum = "Station " + "/".join(sorted(nummern, key=int)) + " genannt"
             b.andere = heimat or b.warum
+            b.sicherheit = "hoch"
         # Profil ohne Nummer: Nummer im Text beweist hier nichts -> weiter unten
         if b.geltung:
             return b
@@ -384,29 +404,43 @@ def bewerte(text: str, profil: Profil | None,
     # 2. Ausdruecklich "alle Stationen"
     if global_marker:
         b.geltung, b.warum = "Anlagenweit", "Text nennt ausdruecklich alle Stationen / die Gesamtanlage"
+        b.sicherheit = "hoch"
         return b
 
     # 3. Passt das Verfahren oder ein Stichwort zu dieser Station?
-    grund = _passt(profil, t, set(), prozess_keys)
+    grund, sich = _passt(profil, t, set(), prozess_keys)
     if grund:
-        b.geltung, b.warum = "Station", grund
+        b.geltung, b.warum, b.sicherheit = "Station", grund, sich
         return b
 
     # 4. Anderes Verfahren oder andere Station aus der Liste
+    # Nur ein vieldeutiges Wort ("feed", "insert") spricht fuer eine andere
+    # Station? Dann lieber "Unklar" als ein relevanter Satz, der verschwindet.
     if heimat:
-        b.geltung, b.warum, b.andere = "Andere Station", "passt besser zu " + heimat, heimat
+        if heimat_sich == "hoch":
+            b.geltung, b.warum, b.andere = "Andere Station", "passt besser zu " + heimat, heimat
+            b.sicherheit = "mittel"
+        else:
+            b.geltung, b.andere = "Unklar", heimat
+            b.warum = "vielleicht " + heimat + " - nur vieldeutiges Stichwort"
         return b
     fremd = [ALLE_THEMEN[k].de for k in sorted(prozess_keys - profil.prozesse)]
+    if fremd and profil.prozesse and not _starke_keys(prozess_keys - profil.prozesse, t):
+        b.geltung = "Unklar"
+        b.warum = "Verfahren " + ", ".join(fremd) + " nur durch vieldeutiges Stichwort erkannt"
+        return b
     if fremd and profil.prozesse:
         b.geltung = "Andere Station"
         b.warum = "Verfahren " + ", ".join(fremd) + " gehoert nicht zu dieser Station"
         b.andere = ", ".join(fremd)
+        b.sicherheit = "mittel" if _starke_keys(prozess_keys - profil.prozesse, t) else "niedrig"
         return b
 
     # 5. Querschnittsthema ohne Verfahren
     if quer_keys:
         b.geltung = "Anlagenweit"
         b.warum = "Querschnittsthema " + ", ".join(ALLE_THEMEN[k].de for k in sorted(quer_keys))
+        b.sicherheit = "mittel"
         return b
 
     b.geltung, b.warum = "Unklar", "kein Hinweis auf eine Station oder ein Thema"
@@ -561,6 +595,71 @@ def vorschlag(saetze: list[str]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Auswertung der Rueckmeldungen ("Stimmt?" ja/nein im Stationsblatt)
+# ---------------------------------------------------------------------------
+SATZBLAETTER = ("Diese Station", "Anlagenweit", "Unklar", "Andere Stationen",
+                "Nach Thema")
+
+
+def auswerten(pfad: Path, falsch_csv: Path | None = None) -> dict:
+    """
+    Liest ein ausgefuelltes Stationsblatt und misst, wie oft die Einordnung
+    stimmte. 'ja' = Einordnung richtig, 'nein' = falsch. Leere Zeilen zaehlen
+    nicht. Ergebnis je Blatt und je Sicherheitsstufe, dazu die falschen Zeilen
+    (mit Grund) - daraus ergibt sich, welche Regel angepasst werden muss.
+    """
+    import openpyxl
+    wb = openpyxl.load_workbook(str(pfad), read_only=True, data_only=True)
+    ergebnis: dict = {"blaetter": {}, "sicherheit": {}, "falsch": []}
+    je_sich: dict = collections.defaultdict(lambda: [0, 0])
+    try:
+        for name in SATZBLAETTER:
+            if name not in wb.sheetnames:
+                continue
+            zeilen = wb[name].iter_rows(values_only=True)
+            kopf = [str(x or "").strip() for x in next(zeilen, [])]
+            if "Stimmt?" not in kopf:
+                continue
+            i_ok = kopf.index("Stimmt?")
+            idx = {k: kopf.index(k) for k in ("Wortlaut (Beleg)", "Warum diese Einordnung",
+                                              "Sicherheit", "Thema") if k in kopf}
+            ja = nein = 0
+            for z in zeilen:
+                if not z or i_ok >= len(z):
+                    continue
+                w = str(z[i_ok] or "").strip().lower()
+                if w not in ("ja", "nein"):
+                    continue
+                sich = str(z[idx["Sicherheit"]]) if "Sicherheit" in idx else "-"
+                if w == "ja":
+                    ja += 1
+                    je_sich[sich][0] += 1
+                else:
+                    nein += 1
+                    je_sich[sich][1] += 1
+                    ergebnis["falsch"].append({
+                        "blatt": name, "sicherheit": sich,
+                        "thema": z[idx["Thema"]] if "Thema" in idx else "",
+                        "warum": z[idx["Warum diese Einordnung"]] if "Warum diese Einordnung" in idx else "",
+                        "wortlaut": z[idx["Wortlaut (Beleg)"]] if "Wortlaut (Beleg)" in idx else ""})
+            if ja + nein:
+                ergebnis["blaetter"][name] = {"ja": ja, "nein": nein,
+                                              "richtig": round(ja / (ja + nein), 2)}
+    finally:
+        wb.close()
+    ergebnis["sicherheit"] = {k: {"ja": v[0], "nein": v[1],
+                                  "richtig": round(v[0] / max(v[0] + v[1], 1), 2)}
+                              for k, v in je_sich.items()}
+    if falsch_csv and ergebnis["falsch"]:
+        with falsch_csv.open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.writer(f, delimiter=";")
+            w.writerow(["Blatt", "Sicherheit", "Thema", "Warum", "Wortlaut"])
+            for x in ergebnis["falsch"]:
+                w.writerow([x["blatt"], x["sicherheit"], x["thema"], x["warum"], x["wortlaut"]])
+    return ergebnis
+
+
+# ---------------------------------------------------------------------------
 # Selbsttest
 # ---------------------------------------------------------------------------
 def _selbsttest() -> int:
@@ -603,11 +702,28 @@ def main() -> int:
     ap.add_argument("--stationsliste", type=Path)
     ap.add_argument("--text")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--auswerten", type=Path, metavar="STATIONSBLATT_XLSX",
+                    help="ausgefuelltes Stationsblatt (Spalte 'Stimmt?') auswerten")
     ap.add_argument("--vorschlag", type=Path, metavar="ZUORDNUNG_JSONL",
                     help="aus requirements.jsonl / zuordnung.jsonl ein Stationsgeruest vorschlagen")
     a = ap.parse_args()
     if a.selftest:
         return _selbsttest()
+    if a.auswerten:
+        aus = a.auswerten.with_name(a.auswerten.stem + "_falsch.csv")
+        e = auswerten(a.auswerten, aus)
+        if not e["blaetter"]:
+            print("Keine ausgefuellten 'Stimmt?'-Zellen gefunden.")
+            return 1
+        print("Trefferquote der Einordnung (ja = richtig)\n")
+        for n, v in e["blaetter"].items():
+            print(f"  {n:<18} {v['ja']:>3} ja  {v['nein']:>3} nein   {v['richtig']:.0%}")
+        print()
+        for n, v in sorted(e["sicherheit"].items()):
+            print(f"  Sicherheit {n:<8} {v['ja']:>3} ja  {v['nein']:>3} nein   {v['richtig']:.0%}")
+        if e["falsch"]:
+            print(f"\n  {len(e['falsch'])} falsche Zeilen (VERTRAULICH): {aus}")
+        return 0
     if a.vorschlag:
         saetze = []
         for z in a.vorschlag.open(encoding="utf-8"):
