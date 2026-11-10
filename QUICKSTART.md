@@ -102,6 +102,8 @@ rating states its reason:
 | Unklar | no hint at all, a person decides |
 
 Sheets: `Fähigkeiten` (process / Cgk / tolerance as one table, duplicates merged),
+`Kennwerte` (parameter, condition, value, unit: cycle time, forces, tolerances, noise;
+a number is only listed when a known parameter word precedes it),
 `Diese Station`, `Anlagenweit`, `Unklar`, `Andere Stationen`, and a gap list on
 `Übersicht` (fields with nothing found). The German short text is a keyword note
 built from the binding level, the topic and the values found; the quoted sentence

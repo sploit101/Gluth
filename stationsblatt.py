@@ -95,6 +95,24 @@ def faehigkeitszeilen(saetze: list[dict]) -> list[dict]:
         reihenfolge.get(g["geltung"], 9), g["verfahren"].lower(), g["kennwert"].lower()))
 
 
+def kennwertzeilen(saetze: list[dict]) -> list[dict]:
+    """Parameter-Tabelle: gleiche Parameter/Werte von mehreren Seiten werden vereint."""
+    gruppen: dict[tuple, dict] = {}
+    for s in saetze:
+        for p in st.parameter(s["text"]):
+            k = (p["parameter"], p["bedingung"], p["wert"], p["einheit"], s["bew"].geltung)
+            g = gruppen.get(k)
+            if g is None:
+                gruppen[k] = g = {**p, "geltung": s["bew"].geltung, "thema": s["bew"].thema,
+                                  "sicherheit": s["bew"].sicherheit, "seiten": [],
+                                  "dateien": set(), "wortlaut": s["text"]}
+            g["seiten"] += list(s.get("seiten", []))
+            g["dateien"].add(s.get("datei", ""))
+    reihenfolge = {"Station": 0, "Anlagenweit": 1, "Unklar": 2, "Andere Station": 3, "": 1}
+    return sorted(gruppen.values(), key=lambda g: (
+        reihenfolge.get(g["geltung"], 9), g["parameter"], g["wert"]))
+
+
 def luecken(kat: dict, treffer: list[dict]) -> list[str]:
     """Befuellbare Zielfelder, zu denen nichts gefunden wurde."""
     belegt = {(t["folienart"], t["feld_id"]) for t in treffer}
@@ -157,7 +175,7 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
         ws.write(z, 0, "Wie lesen?", fm["fett"])
         z += 1
         for zeile in (
-            "1. Blatt 'Fähigkeiten': alle Verfahren und Kennwerte als Tabelle (Cgk, Cpk, MSA, Toleranzen).",
+            "1. Blätter 'Fähigkeiten' und 'Kennwerte': Verfahren, Cgk/Cpk, Toleranzen, Taktzeit, Kräfte als Tabelle (Parameter, Bedingung, Wert, Einheit).",
             "2. Blatt 'Diese Station': nur Sätze, die diese Station betreffen. Hier beginnt die Auslegung.",
             "3. Blatt 'Anlagenweit': gilt für alle Stationen, einmal und nach Thema sortiert.",
             "4. Blatt 'Unklar': bitte kurz ansehen – hier entscheidet ein Mensch, ob es zur Station gehört.",
@@ -220,6 +238,30 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
     else:
         ws.data_validation(1, len(sp) - 1, len(zeilen), len(sp) - 1,
                            {"validate": "list", "source": ["ja", "nein"]})
+
+    # ------------------------------------------------------------ Kennwerte
+    kz = kennwertzeilen(saetze)
+    ws = wb.add_worksheet("Kennwerte")
+    sp = ["Einordnung", "Parameter", "Bedingung", "Wert", "Einheit", "Thema", "Datei",
+          "Seite(n)", "Wortlaut (Beleg)", "Stimmt?"]
+    br = [14, 28, 10, 10, 9, 22, 26, 10, 80, 9]
+    for i, (s_, b_) in enumerate(zip(sp, br)):
+        ws.write(0, i, s_, fm["kopf"])
+        ws.set_column(i, i, b_)
+    ws.freeze_panes(1, 0)
+    for n, g in enumerate(kz, start=1):
+        f = fm["gruen"] if g["geltung"] == "Station" else (
+            fm["grau"] if g["geltung"] == "Andere Station" else fm["zelle"])
+        ws.write_row(n, 0, [g["geltung"] or "–", g["parameter"], g["bedingung"], g["wert"],
+                            g["einheit"], g["thema"],
+                            ", ".join(Path(d).name for d in sorted(g["dateien"]) if d),
+                            _seiten(g["seiten"]), g["wortlaut"], ""], f)
+    ws.autofilter(0, 0, max(len(kz), 1), len(sp) - 1)
+    if kz:
+        ws.data_validation(1, len(sp) - 1, len(kz), len(sp) - 1,
+                           {"validate": "list", "source": ["ja", "nein"]})
+    else:
+        ws.write(1, 0, "Keine Zahlenwerte mit bekanntem Parameter gefunden.", fm["text"])
 
     # -------------------------------------------------- Satzlisten je Einordnung
     def satzblatt(name: str, auswahl: list[dict], farbe: str):

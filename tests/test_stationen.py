@@ -80,6 +80,20 @@ class BewertungTests(unittest.TestCase):
             self.assertEqual(len(e["falsch"]), 1)
             self.assertTrue((Path(d) / "falsch.csv").exists())
 
+    def test_parameter_table(self):
+        def z(t):
+            return [(r["parameter"], r["bedingung"], r["wert"], r["einheit"])
+                    for r in st.parameter(t)]
+        self.assertEqual(z("The cycle time must not exceed 6 s per cable."),
+                         [("Taktzeit", "≤", "6", "s")])
+        self.assertEqual(z("The stripping length shall have a tolerance of +/- 0.2 mm."),
+                         [("Abisolierlänge (Toleranz)", "±", "0,2", "mm")])
+        self.assertEqual(z("Die Einpresskraft muss mindestens 120 N betragen."),
+                         [("Einpresskraft", "≥", "120", "N")])
+        self.assertEqual(z("Output of 1200 parts per hour."),
+                         [("Ausbringung", "=", "1200", "Stk./h")])
+        self.assertEqual(z("The hall height is 4 m."), [])      # kein Parameter geraten
+
     def test_compact_values_only_from_text(self):
         k = st.kompakt("Cgk >= 1.33 and Cpk>=1.67, tolerance +/- 0.2 mm")
         self.assertEqual(k["kennwert"], ["Cgk ≥ 1,33", "Cpk ≥ 1,67"])

@@ -563,6 +563,107 @@ def kompakt(text: str) -> dict:
     return {"kennwert": kennwert, "toleranz": toleranz}
 
 
+# ---------------------------------------------------------------------------
+# Kennwerte als Tabelle: Parameter | Bedingung | Wert | Einheit
+# Ein Wert wird nur aufgenommen, wenn davor im Satz ein bekannter Parameter
+# steht. "Hallenhoehe 4 m" ohne Parameterwort wird nicht geraten.
+# ---------------------------------------------------------------------------
+PARAMETER: list[tuple[re.Pattern, str]] = [(re.compile(m, re.I), de) for m, de in [
+    (r"strip(ping)?\s+length|abisolierlaenge", "Abisolierlänge"),
+    (r"crimp\s+height|crimphoehe", "Crimphöhe"),
+    (r"pull[\s-]?(out|off)\s+force|auszugskraft|abzugskraft", "Auszugskraft"),
+    (r"press[\s-]?(in|fit)\s+forces?|einpresskraft|einpresskraefte", "Einpresskraft"),
+    (r"cycle\s+time|taktzeit", "Taktzeit"),
+    (r"repeat(ing|ability)?\s+accuracy|wiederholgenauigkeit|repeatability", "Wiederholgenauigkeit"),
+    (r"cable\s+length|kabellaenge|cut\s+length|schnittlaenge", "Kabellänge"),
+    (r"sound\s+(pressure\s+)?level|noise\s+level|schallpegel|laermpegel|\bnoise\b", "Schallpegel"),
+    (r"air\s+pressure|compressed\s+air|druckluft|working\s+pressure|betriebsdruck|\bpressure\b|\bdruck\b", "Druck"),
+    (r"supply\s+voltage|mains|netzspannung|\bvoltage\b|spannung", "Spannung"),
+    (r"throughput|ausbringung|parts\s+per\s+hour|output\s+rate", "Ausbringung"),
+    (r"availability|verfuegbarkeit|\boee\b", "Verfügbarkeit"),
+    (r"torque|drehmoment|anzugsmoment", "Drehmoment"),
+    (r"\bweight\b|gewicht|\bmass\b", "Gewicht"),
+    (r"cross[\s-]?section|querschnitt", "Leiterquerschnitt"),
+    (r"temperature|temperatur", "Temperatur"),
+    (r"\bspeed\b|geschwindigkeit", "Geschwindigkeit"),
+    (r"\bforce\b|\bkraft\b|kraefte", "Kraft"),
+    (r"\btolerance|toleranz", "Toleranz"),
+    (r"\blength\b|laenge", "Länge"),
+    (r"diameter|durchmesser", "Durchmesser"),
+]]
+
+_ZAHL_EINHEIT = re.compile(
+    r"(?P<num>\d+(?:[.,]\d+)?)\s*(?P<unit>parts\s+per\s+hour|pieces\s+per\s+hour|stueck\s+pro\s+stunde|mm2|mm²|mm|µm|um|cm|ms|sec|s|min|h|kn|n|bar|kv|v|a|kw|w|kg|g|"
+    r"db\s*\(a\)|db|°c|°|%|stk\.?/h|pcs/h|parts/h|rpm)(?![a-z])", re.I)
+_OP_WORT = [
+    (re.compile(r"(±|\+\s*/\s*-)\s*$"), "±"),
+    (re.compile(r"(>=|≥|at\s+least|minimum|min\.?|mindestens|mind\.?)\s*$", re.I), "≥"),
+    (re.compile(r"(<=|≤|at\s+most|not\s+exceed(ing)?|up\s+to|maximum|max\.?|hoechstens|maximal|"
+                r"nicht\s+ueberschreiten|bis\s+zu)\s*$", re.I), "≤"),
+    (re.compile(r"(<|below|unter|less\s+than|weniger\s+als)\s*$", re.I), "<"),
+    (re.compile(r"(>|above|ueber|more\s+than|mehr\s+als)\s*$", re.I), ">"),
+    (re.compile(r"(approx\.?|ca\.?|circa|~)\s*$", re.I), "ca."),
+    (re.compile(r"=\s*$"), "="),
+]
+_UNIT_DE = {"parts per hour": "Stk./h", "pieces per hour": "Stk./h",
+            "stueck pro stunde": "Stk./h", "mm2": "mm²", "um": "µm", "sec": "s", "kn": "kN", "kv": "kV", "n": "N",
+            "v": "V", "a": "A", "kw": "kW", "w": "W", "db (a)": "dB(A)", "db(a)": "dB(A)",
+            "stk/h": "Stk./h", "stk./h": "Stk./h", "°c": "°C"}
+
+
+def parameter(text: str) -> list[dict]:
+    """
+    Zerlegt einen Satz in Tabellenzeilen {parameter, bedingung, wert, einheit}.
+    Nur Zahlen mit Einheit und bekanntem Parameterwort davor.
+    """
+    t = falten(text)
+    zeilen, gesehen = [], set()
+    for m in _ZAHL_EINHEIT.finditer(t):
+        vor = t[max(0, m.start() - 90):m.start()]
+        # Bedingung unmittelbar vor der Zahl
+        op = ""
+        for muster, zeichen in _OP_WORT:
+            if muster.search(vor):
+                op = zeichen
+                break
+        # Parameter: das letzte bekannte Parameterwort vor dem Wert
+        roh = []
+        for muster, de in PARAMETER:
+            for pm in muster.finditer(vor):
+                roh.append((pm.start(), pm.end(), de))
+        # "stripping length" enthaelt "length": der laengere Treffer gewinnt
+        treffer = sorted((a, d) for a, b, d in roh
+                         if not any(a2 <= a and b <= b2 and (a2, b2) != (a, b)
+                                    for a2, b2, _ in roh))
+        namen = []
+        for _, de in treffer:
+            if de not in namen:
+                namen.append(de)
+            else:                                   # zuletzt genannt zaehlt
+                namen.remove(de)
+                namen.append(de)
+        einheit = _UNIT_DE.get(re.sub(r"\s+", " ", m.group("unit").lower()), m.group("unit"))
+        eindeutig = {"Stk./h": "Ausbringung", "dB": "Schallpegel", "dB(A)": "Schallpegel",
+                     "bar": "Druck"}
+        if not namen and einheit not in eindeutig:
+            continue
+        name = namen[-1] if namen else eindeutig[einheit]
+        if name == "Toleranz" and len(namen) > 1:
+            name = f"{namen[-2]} (Toleranz)"
+        elif op == "±" and name not in ("Toleranz", "Wiederholgenauigkeit") and "Toleranz" not in name:
+            name = f"{name} (Toleranz)"
+        # Eindeutige Einheiten bestimmen den Parameter selbst
+        name = eindeutig.get(einheit, name)
+        zahl = m.group("num").replace(".", ",")
+        schluessel = (name, op, zahl, einheit)
+        if schluessel in gesehen:
+            continue
+        gesehen.add(schluessel)
+        zeilen.append({"parameter": name, "bedingung": op or "=", "wert": zahl,
+                       "einheit": einheit})
+    return zeilen
+
+
 def kurzfassung(bindung: str, bewertung: Bewertung, kennwerte: list[str] | None = None,
                 begriffe: list[str] | None = None) -> str:
     """
@@ -598,7 +699,7 @@ def vorschlag(saetze: list[str]) -> list[dict]:
 # Auswertung der Rueckmeldungen ("Stimmt?" ja/nein im Stationsblatt)
 # ---------------------------------------------------------------------------
 SATZBLAETTER = ("Diese Station", "Anlagenweit", "Unklar", "Andere Stationen",
-                "Nach Thema")
+                "Nach Thema", "Kennwerte", "Fähigkeiten")
 
 
 def auswerten(pfad: Path, falsch_csv: Path | None = None) -> dict:
