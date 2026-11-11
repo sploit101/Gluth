@@ -415,6 +415,8 @@ def api_station():
         "mappings": rows,
         "has_review_sheet": (OUT / "zuordnung.xlsx").exists(),
         "has_station_sheet": (OUT / "stationsblatt.xlsx").exists(),
+        "has_station_slides": (OUT / "stationsfolien.pptx").exists(),
+        "carried_approvals": (_read_json(OUT / "zuordnung_zahlen.json") or {}).get("uebernahme") or None,
         "has_station_proposal": (OUT / "stationsliste_vorschlag.csv").exists(),
         "latest_output": latest.name if latest and latest.is_file() else None,
         "draft_ready": WORKFLOW_FILE.exists(),
@@ -509,9 +511,15 @@ async def api_station_draft(
             for path in SOURCES.rglob("*")
         ):
             return JSONResponse({"error": "Upload source documents first."}, status_code=400)
+        # Freigaben der vorigen Runde mitnehmen: unveraenderte Saetze behalten
+        # ihr ja/nein, nur Neues und Geaendertes muss erneut geprueft werden.
+        previous = _read_json(WORKFLOW_FILE) or {}
+        previous_review = Path(previous["approval_path"]) if previous.get("approval_path") else None
         WORKFLOW_FILE.unlink(missing_ok=True)
         args = [str(HERE / "run.py"), "--input", str(input_path),
                 "--template", str(template_path), "--station", station]
+        if previous_review and previous_review.is_file():
+            args += ["--vorherige-freigabe", str(previous_review)]
         if file_filter.strip() and not uploads:
             args += ["--file", file_filter.strip()[:120]]
         if station_list and station_list.filename:
@@ -634,6 +642,8 @@ def api_station_download(kind: str, request: Request):
         path = OUT / "zuordnung.xlsx"
     elif kind == "stationsblatt":
         path = OUT / "stationsblatt.xlsx"
+    elif kind == "stationsfolien":
+        path = OUT / "stationsfolien.pptx"
     elif kind == "stationsliste":
         path = OUT / "stationsliste_vorschlag.csv"
     elif kind == "presentation":

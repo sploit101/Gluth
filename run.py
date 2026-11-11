@@ -35,6 +35,9 @@ def main() -> int:
                     help="CSV/JSON with the project's stations (Nummer;Name;Stichworte): "
                          "every sentence is sorted against all stations and one sheet per "
                          "station is written to out/stationsblaetter/")
+    ap.add_argument("--vorherige-freigabe", type=Path, dest="vorherige_freigabe",
+                    help="reviewed zuordnung.xlsx from the previous document version: "
+                         "decisions for unchanged sentences are carried over")
     ap.add_argument("--ocr", action="store_true", help="OCR scanned pages before indexing")
     ap.add_argument("--embed", action="store_true", help="build optional local neural index")
     ap.add_argument("--write", action="store_true",
@@ -57,6 +60,8 @@ def main() -> int:
         ap.error(f"template not found: {args.template}")
     if args.stationsliste and not args.stationsliste.is_file():
         ap.error(f"station list not found: {args.stationsliste}")
+    if args.vorherige_freigabe and not args.vorherige_freigabe.is_file():
+        ap.error(f"previous review sheet not found: {args.vorherige_freigabe}")
 
     try:
         run("extract.py", "--input", str(args.input))
@@ -77,6 +82,8 @@ def main() -> int:
                 mapping_args += ["--datei", args.file]
             if args.stationsliste:
                 mapping_args += ["--stationsliste", str(args.stationsliste)]
+            if args.vorherige_freigabe:
+                mapping_args += ["--vorherige-freigabe", str(args.vorherige_freigabe)]
             run("zuordnen.py", *mapping_args)
             if args.write:
                 output = OUT / f"Stationsakte_{datetime.now():%Y%m%d_%H%M%S_%f}.pptx"

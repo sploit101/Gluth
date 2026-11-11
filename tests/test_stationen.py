@@ -94,6 +94,21 @@ class BewertungTests(unittest.TestCase):
                          [("Ausbringung", "=", "1200", "Stk./h")])
         self.assertEqual(z("The hall height is 4 m."), [])      # kein Parameter geraten
 
+    def test_process_without_station_in_list_is_unclear(self):
+        b = self.check("The length repeat accuracy shall be +/- 1 mm.", "Unklar")
+        self.assertIn("keiner Station", b.warum)
+
+    def test_chapter_decides_when_sentence_is_silent(self):
+        b = st.bewerte("The tolerance shall be proven per variant.", S20, LISTE,
+                       "3 Process › 3.2 Stripping unit")
+        self.assertEqual((b.geltung, b.sicherheit), ("Station", "mittel"))
+        self.assertIn("3.2 Stripping unit", b.warum)
+        b = st.bewerte("The blade must be monitored.", S20, LISTE, "3 Process › 3.3 Crimping")
+        self.assertEqual(b.geltung, "Andere Station")
+        # Der Satz selbst schlaegt das Kapitel
+        b = st.bewerte("Station 20 must reject damaged wires.", S20, LISTE, "3.3 Crimping")
+        self.assertEqual(b.geltung, "Station")
+
     def test_compact_values_only_from_text(self):
         k = st.kompakt("Cgk >= 1.33 and Cpk>=1.67, tolerance +/- 0.2 mm")
         self.assertEqual(k["kennwert"], ["Cgk ≥ 1,33", "Cpk ≥ 1,67"])

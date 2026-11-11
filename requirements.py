@@ -192,6 +192,14 @@ GERUND = re.compile(
 GERUND_VERBOT = re.compile(
     r"\b(?:ist|sind)\s+nicht\s+(?:\S+\s+){0,12}?" + _INFINITIV)
 
+# Grenzwerte sind Pflichten, keine Verbote: "must not exceed 6 s" heisst
+# "hoechstens 6 s". Als VERBOT stand in der Akte sonst "Verbot · Taktzeit ≤ 6 s".
+GRENZWERT = re.compile(
+    r"\b(?:shall|must|may|should)\s+not\s+(?:exceed|be\s+(?:more|higher|greater|less|lower|"
+    r"longer|shorter)\s+than|fall\s+below|drop\s+below)\b|"
+    r"\b(?:darf|d(?:ue|[uü])rfen|soll|sollen)\s+(?:\S+\s+){0,5}?nicht\s+"
+    r"(?:(?:ue|[uü])ber|unter)(?:schreiten|schritten|steigen|stiegen)\b", re.I)
+
 VERBOT_DIREKT = re.compile(
     r"(darf\s+(?:\w+\s+){0,3}?nicht|d(?:ue|[uü])rfen\s+(?:\w+\s+){0,3}?nicht|"
     r"ist\s+(?:\w+\s+){0,2}?unzul(?:ae|[aä])ssig|sind\s+(?:\w+\s+){0,2}?unzul(?:ae|[aä])ssig|"
@@ -306,6 +314,10 @@ def _entscheide(sentence: str) -> tuple[str, bool, str, str]:
         return m.group(0) if m else ""
 
     # ---------------------------------------------------------- englisch
+    if hit(GRENZWERT):
+        stufe = "SOLL" if re.match(r"(should|soll)", hit(GRENZWERT), re.I) else "MUSS"
+        return stufe, True, lang, f'Grenzwert, kein Verbot: "{hit(GRENZWERT)}"'
+
     if lang == "en":
         if hit(VERBOT_EN):
             return "VERBOT", True, lang, f'englisches Verbotswort: "{hit(VERBOT_EN)}"'
@@ -934,6 +946,10 @@ class Requirement:
     source_path: str = ""
     page: str | int | None = None
     chunk_id: str | int | None = None
+    # Kapitelueberschrift, unter der der Satz steht ("5.3 Stripping unit").
+    # Ein Lastenheft ist nach Themen gegliedert: ein Satz ohne eigenes
+    # Verfahrenswort gehoert trotzdem zu dem Verfahren seines Kapitels.
+    section: str = ""
     extracted_at: str = ""
 
 
@@ -949,7 +965,7 @@ def from_sentence(sentence: str, meta: dict, router=None) -> Requirement | None:
     meas = extract_measure(body)
     cat, hits = ("", [])
     if router is not None:
-        cat, hits = router.route(body, header=meta.get("header", ""))
+        cat, hits = router.route(body, header=meta.get("header", "") or meta.get("section", ""))
 
     return Requirement(
         req_id=_key(f'{meta.get("project_no","")}|{body}'),
@@ -977,6 +993,7 @@ def from_sentence(sentence: str, meta: dict, router=None) -> Requirement | None:
         source_path=meta.get("source_path", ""),
         page=meta.get("page"),
         chunk_id=meta.get("chunk_id"),
+        section=meta.get("section", ""),
         extracted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
 
@@ -1009,16 +1026,93 @@ def chunk_meta(c: dict) -> dict:
     }
 
 
+# --- Kapitelueberschriften ------------------------------------------------
+# Nur NUMMERIERTE Ueberschriften auf einer eigenen Zeile: "5.3 Stripping unit",
+# "6. Sicherheit". Ohne Nummer ist eine kurze Zeile nicht von einer
+# Tabellenzelle zu unterscheiden. Verzeichniszeilen ("5.3 Stripping ..... 12")
+# und Saetze ("4 Wires must be ...") werden ausgeschlossen.
+UEBERSCHRIFT = re.compile(
+    r"^\s*(?P<nr>\d{1,2}(?:\.\d{1,2}){0,3})\.?\s+"
+    r"(?P<titel>[A-ZÄÖÜ][A-Za-zÄÖÜäöüß0-9 /&(),'+\-]{2,80})\s*$")
+_KEINE_UEBERSCHRIFT = re.compile(
+    r"\b(shall|must|should|will|is|are|muss|m[uü]ssen|soll|sollen|ist|sind|wird|"
+    r"werden|yes|no|ja|nein)\b|\.{3,}|\s\d+\s*$", re.I)
+
+
+_FORTSETZUNG = re.compile(
+    r"([,\-–]|\b(of|the|a|an|and|or|to|for|with|by|in|on|at|from|than|per|"
+    r"von|der|die|das|den|dem|des|mit|und|oder|zu|fuer|für|bei|auf|im|ein|"
+    r"eine|einer|als|je|pro))$", re.I)
+
+
+def ueberschrift(zeile: str, vorher: str) -> str:
+    """Gibt '5.3 Stripping unit' zurueck, wenn die Zeile eine Kapitelueberschrift ist."""
+    m = UEBERSCHRIFT.match(zeile)
+    if not m:
+        return ""
+    titel = m.group("titel").strip()
+    nr = m.group("nr")
+    if int(nr.split(".")[0]) > 30 or _KEINE_UEBERSCHRIFT.search(titel):
+        return ""
+    worte = titel.split()
+    if len(worte) > 10 or not any(sum(c.isalpha() for c in w) >= 4 for w in worte):
+        return ""
+    # Endet die Zeile davor mitten im Satz ("... a length of"), ist diese
+    # Zeile die Fortsetzung eines umbrochenen Satzes, keine Ueberschrift.
+    if _FORTSETZUNG.search(vorher.strip()):
+        return ""
+    return f"{nr} {titel}"
+
+
+KAPITEL_TRENNER = " › "
+
+
+def kapitelpfad(pfad: str, neu: str) -> str:
+    """
+    Haelt die Gliederung: unter '5.3 Stripping unit' wird '5.3.1 Monitoring'
+    zu '5.3 Stripping unit › 5.3.1 Monitoring'. So bleibt das Verfahren des
+    Oberkapitels erhalten, auch wenn das Unterkapitel es nicht nennt.
+    """
+    nr = neu.split(" ", 1)[0]
+    stapel = [e for e in (pfad.split(KAPITEL_TRENNER) if pfad else [])
+              if nr.startswith(e.split(" ", 1)[0] + ".")]
+    return KAPITEL_TRENNER.join(stapel + [neu])
+
+
+def abschnitte(text: str, aktuell: str) -> list[tuple[str, str]]:
+    """Zerlegt Chunk-Text in (Kapitelpfad, Text)-Stuecke."""
+    stuecke, puffer, vorher = [], [], ""
+    for zeile in (text or "").split("\n"):
+        u = ueberschrift(zeile, vorher)
+        if u:
+            if puffer:
+                stuecke.append((aktuell, "\n".join(puffer)))
+            puffer, aktuell = [], kapitelpfad(aktuell, u)
+        else:
+            puffer.append(zeile)
+        if zeile.strip():
+            vorher = zeile
+    if puffer:
+        stuecke.append((aktuell, "\n".join(puffer)))
+    return stuecke
+
+
 def build(chunks_path: Path, project: str | None = None,
           router=None) -> list[Requirement]:
     out: list[Requirement] = []
     seen: set[str] = set()
+    kapitel: dict[str, str] = {}            # letzte Ueberschrift je Dokument
     for c in load_chunks(chunks_path):
         if project and c.get("project_no") != project:
             continue
         meta = chunk_meta(c)
-        for sent in split_sentences(c.get("text", "")):
-            r = from_sentence(sent, meta, router)
+        dok = str(meta.get("source_path") or meta.get("file") or "")
+        saetze = []
+        for titel, stueck in abschnitte(c.get("text", ""), kapitel.get(dok, "")):
+            kapitel[dok] = titel
+            saetze += [(titel, s_) for s_ in split_sentences(stueck)]
+        for titel, sent in saetze:
+            r = from_sentence(sent, {**meta, "section": titel}, router)
             # Dubletten: gleicher Wortlaut bis auf Leerzeichen und Gross-
             # schreibung zaehlt INNERHALB EINES DOKUMENTS als dieselbe
             # Anforderung. Chunk-Ueberlappung und wiederholte Textbausteine
@@ -1078,7 +1172,11 @@ SELF_TEST = [
     # Die zwei Faelle, an denen sich der Operator leicht verdreht:
     ("Der Luftverbrauch soll 200 l/min nicht ueberschreiten.", "SOLL", 200.0,
      "l/min", "LE"),
-    ("Die Haltekraft darf 50 N nicht unterschreiten.", "VERBOT", 50.0, "N", "GE"),
+    # 12.11.2026: Grenzwert = Pflicht (mindestens 50 N), kein Verbot. Als
+    # VERBOT stand in der Akte "Verbot · Haltekraft ≥ 50 N".
+    ("Die Haltekraft darf 50 N nicht unterschreiten.", "MUSS", 50.0, "N", "GE"),
+    ("The cycle time must not exceed 6 s.", "MUSS", 6.0, "s", "LE"),
+    ("The guard must not be removed during operation.", "VERBOT", None, None, None),
     # Gerundivum — in Lastenheften die haeufigste MUSS-Formulierung:
     ("Der Schaltschrank ist in Schutzart IP54 auszufuehren.", "MUSS", 54.0, "IP", "EQ"),
     ("Die Verkabelung ist nach DIN EN 60204 auszufuehren.", "MUSS", None, None, None),

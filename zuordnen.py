@@ -68,6 +68,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+import aenderungen
 import stationen
 import stationsblatt
 
@@ -256,6 +257,10 @@ DOKUMENT = re.compile(
     r"ersatzteil\w*|acceptance\s+run|machine\s+acceptance|"
     r"documentation|dokumentation)\b", re.I)
 
+TAKTZEIT = re.compile(
+    r"\b(cycle\s+time|takt\s*zeit|taktzeit)\b[^.;]{0,60}?\d+[.,]?\d*\s*(s|sec|seconds?|sekunden?)\b",
+    re.I)
+
 PRUEFWORT = re.compile(
     r"\b(monitor\w*|check\w*|inspect\w*|test\w*|"
     r"[uü]berwach\w*|pr[uü]f\w*|mess\w*)\b", re.I)
@@ -341,6 +346,7 @@ AUSZUG_JE_REGEL = {
     "faehigkeit_verfahren": lambda t: auszug(t, VERFAHREN),
     "faehigkeit_kennwert": lambda t: auszug(t, KENNWERT),
     "faehigkeit_toleranz": lambda t: auszug(t, TOLERANZ, vorlauf=35),
+    "taktzeit": lambda t: auszug(t, TAKTZEIT),
 }
 
 
@@ -412,6 +418,14 @@ def regeln(kat: dict) -> list[tuple]:
     add("varianten_ja", "Bauteile", "ph22",
         lambda t, r: bool(VARIANTE.search(t)), "hoch")
 
+    # --- Taktzeit: Kundenvorgabe fuer die Auslegung (zielfelder_korrekturen:
+    #     "geforderte Maschinentaktzeit pro Station mit Zahl und Einheit").
+    #     Vorher stand sie nur im Stationsblatt und das Feld galt als Luecke.
+    for fa in ("Auslegung Roboter", "Auslegung Achssystem",
+               "Auslegung Antrieb/Getriebe", "Auslegung Bildverarbeitung"):
+        add("taktzeit", fa, "ph16",
+            lambda t, r: bool(TAKTZEIT.search(t)), "mittel")
+
     return R
 
 
@@ -472,6 +486,72 @@ def katalog_laden(pfad: Path) -> dict:
     return kat
 
 
+def vorherige_freigaben(pfad: Path) -> list[dict]:
+    """Liest Folienart, Feld, Station, Wortlaut und Freigabe aus einem frueheren Pruefblatt."""
+    import openpyxl
+    wb = openpyxl.load_workbook(str(pfad), read_only=True, data_only=True)
+    try:
+        ws = wb["Zuordnung"] if "Zuordnung" in wb.sheetnames else wb.active
+        zeilen = ws.iter_rows(values_only=True)
+        kopf = [str(x or "").strip() for x in next(zeilen, [])]
+        noetig = ["Folienart", "Feld", "Wortlaut", SPALTE_FREIGABE]
+        if any(n not in kopf for n in noetig):
+            raise ValueError("Spalten fehlen: " + ", ".join(n for n in noetig if n not in kopf))
+        i = {n: kopf.index(n) for n in noetig + (["Station"] if "Station" in kopf else [])}
+        raus = []
+        for z in zeilen:
+            if not z or max(i.values()) >= len(z):
+                continue
+            w = str(z[i[SPALTE_FREIGABE]] or "").strip().lower()
+            if w not in ("ja", "nein"):
+                continue
+            raus.append({"folienart": str(z[i["Folienart"]] or ""), "feld_id": str(z[i["Feld"]] or ""),
+                         "text": str(z[i["Wortlaut"]] or ""), "freigabe": w,
+                         "station": str(z[i["Station"]] or "") if "Station" in i else ""})
+        return raus
+    finally:
+        wb.close()
+
+
+def freigaben_uebernehmen(treffer: list[dict], alt: list[dict]) -> collections.Counter:
+    """
+    Uebernimmt fruehere Entscheidungen (ja/nein) fuer UNVERAENDERTE Saetze im
+    selben Feld und fuer dieselbe Station. Alles andere bleibt leer und wird
+    markiert: 'neu' oder 'geaendert ggue. Vorfassung'. So muss nach einer neuen
+    Lastenheft-Fassung nur geprueft werden, was sich wirklich geaendert hat.
+    """
+    from ketten import kern
+    exakt = {}
+    je_feld = collections.defaultdict(list)
+    for x in alt:
+        exakt[(x["folienart"], x["feld_id"], x["station"], kern(x["text"]))] = x["freigabe"]
+        je_feld[(x["folienart"], x["feld_id"], x["station"])].append(x)
+    z = collections.Counter()
+    for t in treffer:
+        k = (t["folienart"], t["feld_id"], t["station"])
+        w = exakt.get(k + (kern(t["text"]),))
+        if w:
+            t["freigabe_vorher"] = w
+            t["freigabe_herkunft"] = f"aus Vorfassung übernommen ({w})"
+            z["uebernommen_" + w] += 1
+            continue
+        bester, quote = None, 0.0
+        for x in je_feld.get(k, []):
+            r = aenderungen.difflib.SequenceMatcher(
+                None, aenderungen._skelett(x["text"]), aenderungen._skelett(t["text"])).ratio()
+            if r > quote:
+                bester, quote = x, r
+        if bester and quote >= aenderungen.AEHNLICH:
+            t["freigabe_herkunft"] = (f"GEÄNDERT ggü. Vorfassung (dort: {bester['freigabe']}) – "
+                                      + (aenderungen.wertaenderung(bester["text"], t["text"])
+                                         or aenderungen.wortdiff(bester["text"], t["text"], 160)))
+            z["geaendert"] += 1
+        else:
+            t["freigabe_herkunft"] = "NEU – bitte prüfen"
+            z["neu"] += 1
+    return z
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--req", default=str(OUT / "requirements.jsonl"))
@@ -484,6 +564,12 @@ def main() -> int:
     ap.add_argument("--stationsliste", default=None,
                     help="CSV/JSON mit den Stationen des Projekts (Nummer;Name;Stichworte). "
                          "Damit wird jeder Satz gegen alle Stationen gestellt.")
+    ap.add_argument("--vorherige-freigabe", default=None, dest="vorherige_freigabe",
+                    help="frueheres, geprueftes Pruefblatt (zuordnung.xlsx mit ja/nein). "
+                         "Entscheidungen fuer unveraenderte Saetze werden uebernommen.")
+    ap.add_argument("--alle-fassungen", action="store_true", dest="alle_fassungen",
+                    help="auch aeltere Fassungen desselben Dokuments zuordnen "
+                         "(Standard: nur die neueste, aeltere dienen dem Vergleich)")
     ap.add_argument("--nur-sichere", action="store_true", dest="nur_sichere",
                     help="nur Felder mit befuellbar=ja")
     ap.add_argument("--ab-kennung", type=int, default=1,
@@ -506,7 +592,7 @@ def main() -> int:
         print("Erst 'python requirements.py' laufen lassen.")
         return 2
 
-    rows, weg_datei = [], 0
+    rows, weg_datei, alle_rows = [], 0, []
     for line in rpfad.open(encoding="utf-8"):
         line = line.strip()
         if not line:
@@ -517,6 +603,7 @@ def main() -> int:
             continue
         datei = str(wert_von(r, ["file", "filename", "source_file",
                                  "source", "path"]) or "")
+        alle_rows.append(r)
         if a.datei and a.datei.lower() not in datei.lower():
             weg_datei += 1
             continue
@@ -527,6 +614,36 @@ def main() -> int:
     if not rows:
         print("Keine Anforderungen uebrig. Filter zu eng?")
         return 1
+
+    # --------------------------------------------------- Fassungen (neu)
+    # Liegen mehrere Fassungen desselben Dokuments vor (LH_..._V1.01 und
+    # _V1.02), gehoert nur die neueste in die Akte. Sonst stehen alte und neue
+    # Werte nebeneinander und niemand sieht, welcher gilt. Die aelteren dienen
+    # dem Vergleich (Blatt "Änderungen").
+    alle_dateien = sorted({str(x.get("file") or x.get("filename") or "") for x in alle_rows} - {""})
+    dateien_jetzt = sorted({x["_datei"] for x in rows})
+    ausgeblendet = []
+    if not a.alle_fassungen:
+        neueste = {}
+        for d in dateien_jetzt:
+            basis, nr = aenderungen.familie(d)
+            if nr and (basis not in neueste or nr > aenderungen.familie(neueste[basis])[1]):
+                neueste[basis] = d
+        ausgeblendet = [d for d in dateien_jetzt
+                        if aenderungen.familie(d)[1]
+                        and neueste.get(aenderungen.familie(d)[0]) != d]
+        if ausgeblendet:
+            rows = [x for x in rows if x["_datei"] not in ausgeblendet]
+            dateien_jetzt = [d for d in dateien_jetzt if d not in ausgeblendet]
+            print("HINWEIS: aeltere Fassungen nicht zugeordnet (nur Vergleich):",
+                  ", ".join(ascii_safe(d) for d in ausgeblendet))
+    fassungsvergleich = []                  # (alt, neu, Aenderungsliste)
+    for d in dateien_jetzt:
+        vg = aenderungen.vorgaenger(d, alle_dateien)
+        if vg and vg not in dateien_jetzt:
+            fassungsvergleich.append((vg, d, aenderungen.vergleiche(
+                [x for x in alle_rows if str(x.get("file") or x.get("filename") or "") == vg],
+                [x for x in alle_rows if str(x.get("file") or x.get("filename") or "") == d])))
 
     R = regeln(kat)
 
@@ -593,7 +710,7 @@ def main() -> int:
         satz = saetze.get(sk)
         if satz is None:
             kmp = stationen.kompakt(t)
-            kennwerte = kmp["kennwert"] + kmp["toleranz"]
+            kennwerte = stationen.kennwerte_de(t)
             if not kennwerte:
                 kw = stationen.kennwert_text(r.get("operator"), r.get("value"),
                                              r.get("unit"), r.get("value_max"))
@@ -602,15 +719,16 @@ def main() -> int:
             satz = saetze[sk] = {
                 "text": t, "datei": r["_datei"], "seiten": [], "binding": r.get("binding", ""),
                 "kennwerte": kennwerte, "felder": [], "faehigkeit": {},
+                "kapitel": r.get("section") or "",
                 "kompakt": kmp,
             }
         satz["seiten"].append(r["_seite"])
-        bew = stationen.bewerte(t, profil, alle_stationen)
+        bew = stationen.bewerte(t, profil, alle_stationen, r.get("section") or "")
         for name, folienart, feld, _sicher in wohin:
             fn = kat[(folienart, feld)]["feldname"]
             if f"{folienart} / {fn}" not in satz["felder"]:
                 satz["felder"].append(f"{folienart} / {fn}")
-            if name in AUSZUG_JE_REGEL:               # Verfahren / Kennwert / Toleranz
+            if name.startswith("faehigkeit_") and name in AUSZUG_JE_REGEL:
                 teil = name.split("_", 1)[1]
                 # Zellen der Matrix: kurzer Wert, falls er sich sicher lesen laesst;
                 # sonst der woertliche Auszug.
@@ -695,6 +813,16 @@ def main() -> int:
     for i, z in enumerate(treffer, start=a.ab_kennung):
         z["kennung"] = f"R-{i:04d}"
 
+    # ------------------------------------------- Freigaben uebernehmen (neu)
+    uebernahme = collections.Counter()
+    if a.vorherige_freigabe:
+        try:
+            uebernahme = freigaben_uebernehmen(
+                treffer, vorherige_freigaben(Path(a.vorherige_freigabe)))
+        except Exception as e:
+            print("FEHLER: fruehere Freigaben nicht lesbar:", ascii_safe(e))
+            return 2
+
     # ---------------------------------------------------------------- Zahlen
     je_feld = collections.Counter((z["folienart"], z["feld_id"])
                                   for z in treffer)
@@ -737,6 +865,11 @@ def main() -> int:
             if geltung_zaehler else
             ["", "  Einordnung nach Station: nicht moeglich (keine echte Station bekannt)."]),
           "",
+          *(["", "  Freigaben aus der Vorfassung:",
+             f"    {uebernahme['uebernommen_ja']:>5}  uebernommen (ja)",
+             f"    {uebernahme['uebernommen_nein']:>5}  uebernommen (nein)",
+             f"    {uebernahme['geaendert']:>5}  geaendert - neu pruefen",
+             f"    {uebernahme['neu']:>5}  neu - pruefen"] if a.vorherige_freigabe else []),
           f"  Zielfelder im Katalog       {len(kat)}",
           f"  Zielfelder tatsaechlich befuellt {len(je_feld)}",
           "", "  Je Zielfeld:"]
@@ -778,6 +911,7 @@ def main() -> int:
         "ohne_feld": ohne_feld, "mit_feld": verwertet,
         "eintraege": len(treffer), "pruefen": zu_pruefen,
         "geltung": dict(geltung_zaehler),
+        "uebernahme": dict(uebernahme),
         "stationsliste": len(alle_stationen),
     }, indent=1), encoding="utf-8")
     for z in L:
@@ -832,14 +966,17 @@ def main() -> int:
     zelle = wb.add_format({"text_wrap": True, "valign": "top", "border": 1})
     warn = wb.add_format({"text_wrap": True, "valign": "top", "border": 1,
                           "bg_color": "#FDF4E3"})
+    uebernommen = wb.add_format({"text_wrap": True, "valign": "top", "border": 1,
+                                 "font_color": "#555555", "bg_color": "#F1F1F1"})
 
     ws = wb.add_worksheet("Zuordnung")
     spalten = ["Kennung", "Folienart", "Feld", "Feldname", "Prüfen",
                SPALTE_FREIGABE,
                "Regel", "Verbindlichkeit", "Operator", "Wert", "Einheit",
                "Station", "Geltung", "Thema", "Kurzfassung (DE)", "Datei", "Seite",
-               "Wortlaut", "Auszug (Tabelle)", "Auch passend", "Bemerkung"]
-    breiten = [10, 26, 24, 26, 30, 12, 20, 13, 9, 10, 9, 22, 14, 22, 34, 34, 7, 90, 30, 30, 24]
+               "Wortlaut", "Auszug (Tabelle)", "Auch passend", "Bemerkung",
+               "Vorfassung"]
+    breiten = [10, 26, 24, 26, 30, 12, 20, 13, 9, 10, 9, 22, 14, 22, 34, 34, 7, 90, 30, 30, 24, 44]
     for i, (s, b) in enumerate(zip(spalten, breiten)):
         ws.write(0, i, s, kopf)
         ws.set_column(i, i, b)
@@ -847,14 +984,17 @@ def main() -> int:
     ws.autofilter(0, 0, max(len(treffer), 1), len(spalten) - 1)
     for n, z in enumerate(treffer, start=1):
         f = warn if z["pruefen"] else zelle
+        if z.get("freigabe_vorher"):
+            f = uebernommen
         ws.write_row(n, 0, [
             z["kennung"], z["folienart"], z["feld_id"], z["feldname"],
-            z["pruefen"] or "sicher", "",
+            z["pruefen"] or "sicher", z.get("freigabe_vorher", ""),
             z["regel"], z["binding"],
             z["operator"], z["value"] if z["value"] is not None else "",
             z["unit"], z["station"], z["geltung"] or "-", z["thema"],
             z["kurzfassung"], z["datei"], z["seite"], z["text"],
             z.get("auszug", ""), z.get("auch_passend", ""), "",
+            z.get("freigabe_herkunft", ""),
         ], f)
     if treffer:
         sp = spalten.index(SPALTE_FREIGABE)
@@ -932,9 +1072,14 @@ def main() -> int:
     geschrieben = []
     try:
         blatt = OUT / "stationsblatt.xlsx"
-        stationsblatt.schreibe(blatt, profil, alle_stationen or None, satzliste,
-                               treffer, kat)
+        daten = stationsblatt.schreibe(blatt, profil, alle_stationen or None, satzliste,
+                                       treffer, kat, fassungsvergleich)
         geschrieben.append(blatt)
+        try:
+            import stationsfolien
+            geschrieben.append(stationsfolien.schreibe(OUT / "stationsfolien.pptx", daten))
+        except ImportError:
+            print("HINWEIS: python-pptx fehlt, Stationsfolien nicht geschrieben.")
         if profil is None:
             n = stationsblatt.vorschlag_csv(OUT / "stationsliste_vorschlag.csv", satzliste)
             print(f"\n  out/stationsliste_vorschlag.csv  {n} Verfahren als Vorlage fuer die Stationsliste")
@@ -944,8 +1089,14 @@ def main() -> int:
             for p_ in alle_stationen:
                 name = re.sub(r"[^\w.-]+", "_", p_.name).strip("_")[:60] or "Station"
                 ziel_p = ordner / f"{name}.xlsx"
-                stationsblatt.schreibe(ziel_p, p_, alle_stationen, satzliste, treffer, kat)
+                d_ = stationsblatt.schreibe(ziel_p, p_, alle_stationen, satzliste, treffer, kat,
+                                            fassungsvergleich)
                 geschrieben.append(ziel_p)
+                try:
+                    import stationsfolien
+                    geschrieben.append(stationsfolien.schreibe(ziel_p.with_suffix(".pptx"), d_))
+                except ImportError:
+                    pass
     except Exception as e:                       # pragma: no cover
         print("WARNUNG: Stationsblatt nicht geschrieben:", ascii_safe(e))
 

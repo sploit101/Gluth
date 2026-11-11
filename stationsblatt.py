@@ -28,6 +28,7 @@ import collections
 from datetime import datetime
 from pathlib import Path
 
+import aenderungen as aend
 import stationen as st
 
 BINDUNG_RANG = {"MUSS": 0, "VERBOT": 1, "SOLL": 2, "KANN": 3, "INFO": 4}
@@ -51,7 +52,7 @@ def bewerten(saetze: list[dict], profil: st.Profil | None,
     """Haengt Bewertung und Kurzfassung an jeden Satz (Kopie)."""
     raus = []
     for s in saetze:
-        b = st.bewerte(s["text"], profil, alle)
+        b = st.bewerte(s["text"], profil, alle, s.get("kapitel", ""))
         begriffe = st.fachbegriffe(s["text"])
         raus.append({**s, "bew": b, "begriffe": begriffe,
                      "kurz": st.kurzfassung(s.get("binding", ""), b,
@@ -113,26 +114,63 @@ def kennwertzeilen(saetze: list[dict]) -> list[dict]:
         reihenfolge.get(g["geltung"], 9), g["parameter"], g["wert"]))
 
 
-def luecken(kat: dict, treffer: list[dict]) -> list[str]:
-    """Befuellbare Zielfelder, zu denen nichts gefunden wurde."""
+def luecken(kat: dict, treffer: list[dict], kennwerte: list[dict] | None = None) -> list[str]:
+    """
+    Befuellbare Zielfelder, zu denen nichts zugeordnet wurde. Steht ein
+    passender Kennwert trotzdem im Text (Feldname enthaelt den Parameter),
+    wird das dazugeschrieben - "nicht gefunden" waere dann falsch.
+    """
     belegt = {(t["folienart"], t["feld_id"]) for t in treffer}
     raus = []
     for (fa, fid), z in sorted(kat.items()):
         if z.get("befuellbar") == "ja" and (fa, fid) not in belegt:
-            raus.append(f"{fa} / {z.get('feldname') or fid}")
+            feld = z.get("feldname") or fid
+            eintrag = f"{fa} / {feld}"
+            treffer_ = [k for k in (kennwerte or [])
+                        if st.falten(k["parameter"].split(" (")[0]) in st.falten(feld + " " + fa)]
+            if treffer_:
+                k = treffer_[0]
+                op = "" if k["bedingung"] == "=" else k["bedingung"] + " "
+                eintrag += (f" – steht im Text ({k['parameter']} {op}{k['wert']} {k['einheit']}, "
+                            f"S. {_seiten(k['seiten'])}), aber keinem Feld zugeordnet")
+            raus.append(eintrag)
     return raus
 
 
-def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
-             saetze_roh: list[dict], treffer: list[dict], kat: dict) -> dict:
+def aufbereiten(profil: st.Profil | None, alle: list[st.Profil] | None,
+                saetze_roh: list[dict], treffer: list[dict], kat: dict,
+                fassungsvergleich: list[tuple] | None = None) -> dict:
     """
-    Schreibt das Stationsblatt. Rueckgabe: Zaehler je Geltung (fuer Zahlenblatt).
-    Ohne Profil ("Gesamtanlage") gibt es keine Geltung, sondern Themen.
+    Alles, was Stationsblatt (xlsx) und Stationsfolien (pptx) zeigen - einmal
+    berechnet, damit beide garantiert dasselbe sagen.
+    """
+    saetze = bewerten(saetze_roh, profil, alle)
+    kennw = kennwertzeilen(saetze)
+    return {
+        "profil": profil,
+        "saetze": saetze,
+        "zaehler": collections.Counter(s["bew"].geltung for s in saetze),
+        "faehigkeiten": faehigkeitszeilen(saetze),
+        "kennwerte": kennw,
+        "luecken": luecken(kat, treffer, kennw),
+        "quellen": sorted({Path(s.get("datei", "")).name for s in saetze if s.get("datei")}),
+        "aenderungen": [(alt, neu, aend.einordnen(liste, profil, alle))
+                        for alt, neu, liste in (fassungsvergleich or [])],
+    }
+
+
+def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
+             saetze_roh: list[dict], treffer: list[dict], kat: dict,
+             fassungsvergleich: list[tuple] | None = None) -> dict:
+    """
+    Schreibt das Stationsblatt und gibt die aufbereiteten Daten zurueck
+    (fuer die Stationsfolien). Ohne Profil ("Gesamtanlage") gibt es keine
+    Geltung, sondern Themen.
     """
     import xlsxwriter
 
-    saetze = bewerten(saetze_roh, profil, alle)
-    zaehler = collections.Counter(s["bew"].geltung for s in saetze)
+    daten = aufbereiten(profil, alle, saetze_roh, treffer, kat, fassungsvergleich)
+    saetze, zaehler = daten["saetze"], daten["zaehler"]
     wb = xlsxwriter.Workbook(str(ziel))
 
     fm = {
@@ -171,6 +209,14 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
             ws.write_row(z, 0, [g, zaehler.get(g, 0), GELTUNG_TEXT[g]],
                          fm["gruen"] if g == "Station" else fm["zelle"])
             z += 1
+        for alt_d, neu_d, liste in daten["aenderungen"]:
+            echt = [x for x in liste if x["status"] != "unveraendert"]
+            hier = sum(1 for x in echt if x["bew"].geltung == "Station")
+            z += 1
+            ws.merge_range(z, 0, z, 2,
+                           f"Änderungen {Path(alt_d).name} → {Path(neu_d).name}: {len(echt)} insgesamt, "
+                           f"davon {hier} für diese Station (Blatt 'Änderungen').", fm["fett"])
+            z += 1
         z += 1
         ws.write(z, 0, "Wie lesen?", fm["fett"])
         z += 1
@@ -201,7 +247,7 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
     z += 1
     ws.write(z, 0, "Nicht gefunden (Lücken)", fm["fett"])
     z += 1
-    fehlt = luecken(kat, treffer)
+    fehlt = daten["luecken"]
     if fehlt:
         for eintrag in fehlt:
             ws.merge_range(z, 0, z, 2, "– " + eintrag, fm["text"])
@@ -215,7 +261,7 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
                  fm["text"])
 
     # ---------------------------------------------------------- Faehigkeiten
-    zeilen = faehigkeitszeilen(saetze)
+    zeilen = daten["faehigkeiten"]
     ws = wb.add_worksheet("Fähigkeiten")
     sp = ["Einordnung", "Verfahren", "Kennwert", "Toleranz / Genauigkeit", "Thema",
           "Kurzfassung (DE)", "Datei", "Seite(n)", "Wortlaut (Beleg)", "Stimmt?"]
@@ -240,7 +286,7 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
                            {"validate": "list", "source": ["ja", "nein"]})
 
     # ------------------------------------------------------------ Kennwerte
-    kz = kennwertzeilen(saetze)
+    kz = daten["kennwerte"]
     ws = wb.add_worksheet("Kennwerte")
     sp = ["Einordnung", "Parameter", "Bedingung", "Wert", "Einheit", "Thema", "Datei",
           "Seite(n)", "Wortlaut (Beleg)", "Stimmt?"]
@@ -263,13 +309,18 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
     else:
         ws.write(1, 0, "Keine Zahlenwerte mit bekanntem Parameter gefunden.", fm["text"])
 
+    # ------------------------------------------------------------ Aenderungen
+    for n, (alt_d, neu_d, liste) in enumerate(daten["aenderungen"], start=1):
+        ws = wb.add_worksheet("Änderungen" if n == 1 else f"Änderungen {n}")
+        aend.blatt_schreiben(ws, liste, fm)
+
     # -------------------------------------------------- Satzlisten je Einordnung
     def satzblatt(name: str, auswahl: list[dict], farbe: str):
         ws_ = wb.add_worksheet(name)
         sp_ = ["Nr", "Thema", "Sicherheit", "Verb.", "Kurzfassung (DE)", "Kennwerte", "Fachbegriffe (DE)",
-               "Wortlaut (Beleg)", "Datei", "Seite(n)", "Warum diese Einordnung",
+               "Wortlaut (Beleg)", "Datei", "Seite(n)", "Kapitel", "Warum diese Einordnung",
                "Feld in der Akte", "Stimmt?"]
-        br_ = [5, 22, 11, 8, 34, 22, 28, 80, 26, 10, 30, 28, 9]
+        br_ = [5, 22, 11, 8, 40, 30, 28, 80, 26, 10, 30, 34, 28, 9]
         for i, (s_, b_) in enumerate(zip(sp_, br_)):
             ws_.write(0, i, s_, fm["kopf"])
             ws_.set_column(i, i, b_)
@@ -280,7 +331,8 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
             ws_.write_row(n, 0, [
                 n, b.thema, b.sicherheit or "-", s.get("binding", ""), s["kurz"], "; ".join(s.get("kennwerte") or []),
                 ", ".join(s["begriffe"]), s["text"], Path(s.get("datei", "")).name,
-                _seiten(s.get("seiten", [])), warum, "; ".join(s.get("felder", [])), ""],
+                _seiten(s.get("seiten", [])), s.get("kapitel", ""), warum,
+                "; ".join(s.get("felder", [])), ""],
                 fm[farbe])
         ws_.autofilter(0, 0, max(len(auswahl), 1), len(sp_) - 1)
         if auswahl:
@@ -313,7 +365,7 @@ def schreibe(ziel: Path, profil: st.Profil | None, alle: list[st.Profil] | None,
                  "was macht und wie sie nummeriert ist, entscheidet der Konstrukteur (Spalte Nummer).",
                  fm["klein"])
     wb.close()
-    return dict(zaehler)
+    return daten
 
 
 def vorschlag_csv(ziel: Path, saetze: list[dict]) -> int:

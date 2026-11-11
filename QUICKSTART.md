@@ -87,28 +87,40 @@ port 5173. Open `http://127.0.0.1:5173` for the live frontend. The frontend
 proxies `/api` to the backend. `npm run build` in `frontend/` builds the same
 dashboard for FastAPI to serve at `http://127.0.0.1:8800`.
 
-## Station sheet: what an engineer actually reads
+## Station sheet and slides: what an engineer actually reads
 
-`out/stationsblatt.xlsx` is written on every run next to the review sheet. It
-answers "what applies to *my* station?" instead of listing quotes from the whole
-line. Every sentence is rated by rules in `stationen.py` (no model), and every
-rating states its reason:
+Every run writes two files for the engineer next to the review sheet:
+
+- `out/stationsblatt.xlsx`: the full working view with evidence.
+- `out/stationsfolien.pptx`: the target-image slides to discuss: station overview,
+  process requirements as a table, this station, changes, all stations, open points.
+
+Both answer "what applies to *my* station?" instead of listing quotes from the
+whole line. Every sentence is rated by rules in `stationen.py` (no model), and every
+rating states its reason and a confidence (hoch / mittel / niedrig):
 
 | Rating | Meaning |
 |---|---|
-| Station | names the station number or a process of this station (e.g. stripping) |
+| Station | names the station number, a process of this station (e.g. stripping), or stands in a chapter about it |
 | Anlagenweit | applies to all stations (safety, capability, documentation, acceptance, ...) |
 | Andere Station | names another station or process, listed only as a cross-check |
-| Unklar | no hint at all, a person decides |
+| Unklar | no reliable hint, a person decides |
 
-Sheets: `Fähigkeiten` (process / Cgk / tolerance as one table, duplicates merged),
+**Chapters count.** `requirements.py` now records the numbered heading each
+sentence stands under ("3 Process requirements › 3.2 Stripping unit"). A sentence
+without a process word of its own ("The tolerance shall be proven per variant.")
+inherits the chapter's process. A station number or process in the sentence itself
+still wins over the chapter. The heading is shown in the `Kapitel` column.
+
+Sheets: `Übersicht` (counts and gaps), `Fähigkeiten` (Cgk/Cpk/MSA as one table),
 `Kennwerte` (parameter, condition, value, unit: cycle time, forces, tolerances, noise;
-a number is only listed when a known parameter word precedes it),
-`Diese Station`, `Anlagenweit`, `Unklar`, `Andere Stationen`, and a gap list on
-`Übersicht` (fields with nothing found). The German short text is a keyword note
-built from the binding level, the topic and the values found; the quoted sentence
-with file and page stays the evidence. The last column `Stimmt?` (ja/nein) is for
-feedback and shows which rules need tuning.
+a number is only listed when a known parameter word precedes it), `Änderungen`,
+`Diese Station`, `Anlagenweit`, `Unklar` and `Andere Stationen`. The German short
+text ("Muss · Abisolieren · Abisolierlänge (Toleranz) ± 0,2 mm") is built from the
+binding level, the topic and the values found. The quoted sentence with file, page
+and chapter stays the evidence. Gaps say when a value is in the text but no field
+took it. A vague word such as "feeding" alone never moves a sentence to another
+station: it becomes Unklar, so nothing relevant disappears.
 
 With a placeholder station such as "Gesamtanlage (Stationszuordnung folgt)" nothing
 is rated; sentences are sorted by topic and `out/stationsliste_vorschlag.csv`
@@ -118,22 +130,43 @@ proposes stations from the processes found. Fill in numbers and names, then:
 python run.py --template path/to/Stationsakte.pptx --station "Station 20 Abisolieren" --stationsliste stationsliste.csv
 ```
 
-This rates each sentence against all stations and writes one sheet per station to
-`out/stationsblaetter/`. See `stationsliste_beispiel.csv`. Rows rated "Andere
-Station" or "Unklar" are marked for review, so the default PowerPoint skips them.
-In the web app, upload the list under **Station list**.
+This rates each sentence against all stations and writes a sheet and slides per
+station to `out/stationsblaetter/`. See `stationsliste_beispiel.csv`. A process that
+no station in the list covers stays Unklar. Rows rated "Andere Station" or "Unklar"
+are marked for review, so the default PowerPoint skips them. In the web app, upload
+the list under **Station list**.
 
-Each rating carries a confidence (hoch / mittel / niedrig). A sentence that only
-contains a vague word such as "feeding" or "insert" is never thrown out as
-"other station"; it becomes Unklar so nothing relevant disappears.
+## A new version of the Lastenheft arrives
 
-After someone fills in `Stimmt?` (ja = rating correct), measure it:
+1. **Only the newest version goes into the file.** If `LH_..._V1.01` and `_V1.02`
+   are both in `sources/`, only V1.02 is mapped; V1.01 is used for comparison
+   (`--alle-fassungen` turns this off).
+2. **What changed, for this station:** sheet `Änderungen` and the slide
+   "Änderungen ggü. …" list NEU, ENTFALLEN, WERT GEÄNDERT ("Abisolierlänge
+   (Toleranz): ± 0,3 mm → ± 0,2 mm"), VERBINDLICHKEIT GEÄNDERT (SOLL → MUSS) and
+   TEXT GEÄNDERT with a word diff, sorted with this station first. Standalone:
+   `python aenderungen.py --datei LH_04K_000051 --station "Station 20 Abisolieren"`.
+3. **Only review what changed:** pass the reviewed sheet of the previous version:
+
+```sh
+python run.py --template path/to/Stationsakte.pptx --station "Station 20 Abisolieren" --vorherige-freigabe path/to/reviewed_V1.01.xlsx
+```
+
+   ja/nein is carried over for sentences that are unchanged in the same field for
+   the same station (grey rows). Changed rows say "GEÄNDERT ggü. Vorfassung (dort:
+   ja) – old → new"; new rows say "NEU". The web app does this automatically
+   with the last uploaded review sheet.
+
+## Feedback
+
+After someone fills in `Stimmt?` (ja = rating correct) in the station sheet:
 `python stationen.py --auswerten out/stationsblatt.xlsx` prints the hit rate per
-sheet and confidence, and writes the wrong rows to `*_falsch.csv`.
+sheet and confidence and writes the wrong rows to `*_falsch.csv`.
 
-Version comparison for one station:
-`python ketten.py --station "Station 20 Abisolieren" --stationsliste stationsliste.csv`
-puts changed values for that station first, with old and new value.
+## Wording that changed meaning
+
+"must not exceed 6 s" / "darf 32 s nicht überschreiten" is now a limit (MUSS,
+≤ 6 s), not a prohibition (VERBOT). "must not be removed" stays VERBOT.
 
 ## Limits that need human input
 
@@ -143,8 +176,11 @@ puts changed values for that station first, with old and new value.
   guarantee. Check the discarded and unassigned rows before relying on an Akte.
 - The supplied example does not include a real process specification or meeting
   minutes. Those sources have not been validated end to end.
-- The current writer creates an initial station file. It does not merge edits
-  from a later PDF revision into a previously reviewed Akte.
+- The writer creates a new station file per run. A later PDF revision is handled
+  through the change list and carried-over approvals, not by editing a
+  previously written PowerPoint in place.
+- Chapter detection needs numbered headings on their own line ("3.2 Stripping
+  unit"). Unnumbered Word headings are not detected yet.
 
 Run `python requirements.py --self-test` and `python router.py --check` for
 quick checks. `python ocr.py --list` shows which documents need OCR.

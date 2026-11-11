@@ -112,7 +112,7 @@ QUERSCHNITT: list[Thema] = [
     _t("SICHERHEIT", "Sicherheit", "quer",
        r"\bsafety\b|sicherheit|\be-?stop\b|emergency\s+stop|not[\s-]?halt|not[\s-]?aus|light\s+curtain|lichtvorhang|lichtgitter|schutz(tuer|zaun|einricht|haube)|protective|guard(ing)?\b|performance\s+level|13849|machiner(y|ie)\s+directive|maschinenrichtlinie|\bce[\s-](mark|certif|kennz)|risk\s+assessment|risikobeurteil"),
     _t("DOKUMENTATION", "Dokumentation", "quer",
-       r"documentation|dokumentation|operating\s+instruction|betriebsanleitung|\bmanual\b|handbuch|circuit\s+diagram|schaltplan|\bdrawings?\b|zeichnung|spare\s+parts?|ersatzteil|maintenance\s+plan|wartungsplan"),
+       r"documentation|dokumentation|operating\s+instruction|betriebsanleitung|(user|operating|operator|service|maintenance)\s+manual|handbuch|circuit\s+diagram|schaltplan|\bdrawings?\b|zeichnung|spare\s+parts?|ersatzteil|maintenance\s+plan|wartungsplan"),
     _t("ABNAHME", "Abnahme / Inbetriebnahme", "quer",
        r"acceptance|abnahme|\bfat\b|\bsat\b|run[\s-]?off|commissioning|inbetriebnahme|buy[\s-]?off|ramp[\s-]?up|\bhochlauf"),
     _t("STEUERUNG", "Elektrik / Steuerung / Schnittstellen", "quer",
@@ -313,6 +313,7 @@ class Bewertung:
     themen_keys: list[str] = field(default_factory=list)
     andere: str = ""             # Name der vermutlich gemeinten Station
     sicherheit: str = "niedrig"  # hoch | mittel | niedrig - wie belastbar der Grund ist
+    kapitel: str = ""            # Gliederungspfad, unter dem der Satz steht
 
     @property
     def thema(self) -> str:
@@ -325,7 +326,7 @@ class Bewertung:
 VIELDEUTIG = re.compile(
     r"\b(feed(ing|er|s)?|insert(ion|ing|ed)?|place(d|ment)?|reject(s|ed)?|scrap|"
     r"label(s|led|ling)?|packing|packag\w*|handling|portal|reel|spool|cut(s|ting)?|"
-    r"press(ing)?|screw(s)?|robot(s)?|vision|torque|conveyor|trommel)\b", re.I)
+    r"press(ing)?(?![\s-]?(in|fit)\b)|screw(s)?|robot(s)?|vision|torque|conveyor|trommel)\b", re.I)
 
 
 def _starke_keys(keys: set[str], t: str) -> set[str]:
@@ -350,12 +351,63 @@ def _passt(profil: Profil, text_gefaltet: str, nummern: set[str], keys: set[str]
     return "", ""
 
 
+KAPITEL_TRENNER = " › "
+
+
 def bewerte(text: str, profil: Profil | None,
-            alle: list[Profil] | None = None) -> Bewertung:
+            alle: list[Profil] | None = None, kapitel: str = "") -> Bewertung:
     """
     Bewertet einen Satz gegenueber der Station `profil`.
     Ohne Profil wird nur das Thema bestimmt (geltung bleibt leer).
+
+    kapitel ist der Gliederungspfad ("5 Process › 5.3 Stripping unit"). Er
+    zaehlt nur, wenn der Satz SELBST nichts Eindeutiges sagt: Stationsnummer,
+    "alle Stationen" und ein Verfahrenswort im Satz schlagen das Kapitel.
     """
+    b = _bewerte_satz(text, profil, alle)
+    b.kapitel = kapitel
+    if not kapitel:
+        return b
+    teile = [k.strip() for k in kapitel.split(KAPITEL_TRENNER) if k.strip()]
+    titel = [(k, re.sub(r"^\d+(\.\d+)*\.?\s+", "", k)) for k in reversed(teile)]
+
+    # Thema aus dem Kapitel, wenn der Satz selbst kein Verfahren nennt
+    if not any(ALLE_THEMEN[k].art == "prozess" for k in b.themen_keys):
+        for _, t_ in titel:
+            kt = [th for th in themen_in(t_) if th.art == "prozess"]
+            if kt:
+                b.themen = ([th.de for th in kt] + b.themen)[:2]
+                b.themen_keys = [th.key for th in kt] + b.themen_keys
+                break
+
+    if profil is None or not profil.bewertbar:
+        return b
+    eindeutig = b.geltung in ("Station", "Andere Station") or \
+        (b.geltung == "Anlagenweit" and b.sicherheit == "hoch")
+    if eindeutig:
+        return b
+    for voll, t_ in titel:
+        kb = _bewerte_satz(t_, profil, alle)
+        if kb.geltung in ("Station", "Andere Station"):
+            b.geltung, b.andere = kb.geltung, kb.andere
+            b.warum = f"Kapitel '{voll}': {kb.warum}"
+            b.sicherheit = "mittel" if kb.sicherheit in ("hoch", "mittel") else "niedrig"
+            return b
+    if b.geltung == "Unklar":
+        for voll, t_ in titel:
+            kb = _bewerte_satz(t_, profil, alle)
+            if kb.geltung == "Anlagenweit":
+                b.geltung, b.sicherheit = "Anlagenweit", "mittel"
+                b.warum = f"Kapitel '{voll}': {kb.warum}"
+                if not b.themen:
+                    b.themen = kb.themen
+                return b
+    return b
+
+
+def _bewerte_satz(text: str, profil: Profil | None,
+                  alle: list[Profil] | None = None) -> Bewertung:
+    """Bewertung allein aus dem Satz (ohne Kapitel)."""
     t = falten(text)
     themen = themen_in(text)
     prozess_keys = {th.key for th in themen if th.art == "prozess"}
@@ -428,6 +480,13 @@ def bewerte(text: str, profil: Profil | None,
     if fremd and profil.prozesse and not _starke_keys(prozess_keys - profil.prozesse, t):
         b.geltung = "Unklar"
         b.warum = "Verfahren " + ", ".join(fremd) + " nur durch vieldeutiges Stichwort erkannt"
+        return b
+    if fremd and profil.prozesse and alle and not any(
+            (prozess_keys - profil.prozesse) & q.prozesse for q in alle):
+        # Die Liste kennt keine Station fuer dieses Verfahren - vielleicht macht
+        # diese Station es mit (Ablaengen + Abisolieren auf einer Maschine).
+        b.geltung = "Unklar"
+        b.warum = "Verfahren " + ", ".join(fremd) + " gehoert zu keiner Station der Liste"
         return b
     if fremd and profil.prozesse:
         b.geltung = "Andere Station"
@@ -662,6 +721,22 @@ def parameter(text: str) -> list[dict]:
         zeilen.append({"parameter": name, "bedingung": op or "=", "wert": zahl,
                        "einheit": einheit})
     return zeilen
+
+
+def kennwerte_de(text: str) -> list[str]:
+    """
+    Kennwerte eines Satzes als kurze deutsche Ausdruecke, mit Parametername:
+    'Cgk ≥ 1,33', 'Abisolierlänge (Toleranz) ± 0,2 mm', 'Taktzeit ≤ 6 s'.
+    """
+    raus = list(kompakt(text)["kennwert"])
+    for p in parameter(text):
+        op = "" if p["bedingung"] == "=" else p["bedingung"] + " "
+        x = f"{p['parameter']} {op}{p['wert']} {p['einheit']}".strip()
+        if x not in raus:
+            raus.append(x)
+    if not raus:
+        raus = list(kompakt(text)["toleranz"])
+    return raus
 
 
 def kurzfassung(bindung: str, bewertung: Bewertung, kennwerte: list[str] | None = None,

@@ -192,7 +192,7 @@ def main() -> int:
             paare.append((x, y, st, mehrdeutig))
 
     def einordnen(y: dict):
-        return stationen.bewerte(y["text"], profil, alle_st or None)
+        return stationen.bewerte(y["text"], profil, alle_st or None, y.get("section") or "")
 
     zaehler = collections.Counter(p[2] for p in paare)
     mehrdeutige = sum(1 for p in paare if p[3])
